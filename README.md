@@ -42,13 +42,13 @@ Most Jira MCP servers require OAuth or API tokens, which many organizations rest
 ### 1. Installation
 
 ```bash
-npm install -g jira-mcp
+npm install -g jira-basic-mcp
 ```
 
 Or use directly with npx (no install needed):
 
 ```bash
-npx jira-mcp
+npx jira-basic-mcp
 ```
 
 ### 2. Get Your Credentials
@@ -76,16 +76,19 @@ Create `.vscode/mcp.json` in your project:
   "servers": {
     "jira": {
       "command": "npx",
-      "args": ["-y", "jira-mcp"],
+      "args": ["-y", "jira-basic-mcp"],
       "env": {
         "JIRA_BASE_URL": "https://your-jira-instance.com",
         "JIRA_USERNAME": "your-username",
-        "JIRA_PASSWORD": "your-password"
+        "JIRA_PASSWORD": "your-password",
+        "JIRA_PROJECTS_FILTER": "ABC,DEF,XYZ"
       }
     }
   }
 }
 ```
+
+> **Note:** `JIRA_PROJECTS_FILTER` is optional. If set, only the specified projects (comma-separated keys) will be accessible. Omit this to access all projects.
 
 ### Option 2: User Settings
 
@@ -97,17 +100,20 @@ Add to your VS Code `settings.json`:
     "servers": {
       "jira": {
         "command": "npx",
-        "args": ["-y", "jira-mcp"],
+        "args": ["-y", "jira-basic-mcp"],
         "env": {
           "JIRA_BASE_URL": "https://your-jira-instance.com",
           "JIRA_USERNAME": "your-username",
-          "JIRA_PASSWORD": "your-password"
+          "JIRA_PASSWORD": "your-password",
+          "JIRA_PROJECTS_FILTER": "ABC,DEF,XYZ"
         }
       }
     }
   }
 }
 ```
+
+> **Note:** `JIRA_PROJECTS_FILTER` is optional. If set, only the specified projects (comma-separated keys) will be accessible.
 
 ### Using in VS Code
 
@@ -135,29 +141,36 @@ Add to your config file:
   "mcpServers": {
     "jira": {
       "command": "npx",
-      "args": ["-y", "jira-mcp"],
+      "args": ["-y", "jira-basic-mcp"],
       "env": {
         "JIRA_BASE_URL": "https://your-jira-instance.com",
         "JIRA_USERNAME": "your-username",
-        "JIRA_PASSWORD": "your-password"
+        "JIRA_PASSWORD": "your-password",
+        "JIRA_PROJECTS_FILTER": "ABC,DEF,XYZ"
       }
     }
   }
 }
 ```
 
+> **Note:** `JIRA_PROJECTS_FILTER` is optional. If set, only the specified projects (comma-separated keys) will be accessible.
+
 ---
 
 ## Standalone Usage
 
-#### Note: Required Environment Variables
+### Environment Variables
 
 ```bash
+# Required
 export JIRA_BASE_URL="https://your-jira-instance.com"
 export JIRA_USERNAME="your-username"
 export JIRA_PASSWORD="your-password"
 
-npx jira-mcp
+# Optional: Limit to specific projects (comma-separated)
+export JIRA_PROJECTS_FILTER="ABC,DEF,XYZ"
+
+npx jira-basic-mcp
 ```
 
 ### Testing with MCP Inspector
@@ -165,7 +178,7 @@ npx jira-mcp
 The MCP Inspector provides a web UI to test all tools interactively:
 
 ```bash
-npx @modelcontextprotocol/inspector npx jira-mcp
+npx @modelcontextprotocol/inspector npx jira-basic-mcp
 ```
 
 This opens a browser at `http://localhost:6274` where you can:
@@ -347,7 +360,7 @@ Parameters: {
 ```bash
 # Clone the repository
 git clone <repo-url>
-cd jira-mcp
+cd jira-basic-mcp
 
 # Install dependencies
 pnpm install
