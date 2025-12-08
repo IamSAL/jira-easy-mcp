@@ -1,0 +1,24 @@
+# Source files (we publish compiled JS)
+src/
+
+# Config files
+tsconfig.json
+.eslintrc.json
+.prettierrc
+
+# Development
+.git/
+.github/
+.vscode/
+.idea/
+
+# Tests
+__tests__/
+*.test.ts
+*.spec.ts
+coverage/
+
+# Misc
+.DS_Store
+*.log
+.env*
