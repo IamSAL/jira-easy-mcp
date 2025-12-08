@@ -7,6 +7,8 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 import { jiraGet, jiraPost, jiraDelete } from '../client.js';
+import { formatResponse } from '../config.js';
+import { startToolCall, endToolCall, failToolCall } from '../logger.js';
 import type { JiraIssueLinkType } from '../types.js';
 
 interface IssueLinkTypesResult {
@@ -148,20 +150,27 @@ export const registerLinkTools = (server: McpServer): void => {
     'jira_get_link_types',
     'List all available issue link types configured in Jira (e.g., "Blocks/Is blocked by", "Clones/Is cloned by", "Relates to"). Call this before jira_create_link to see valid link type names and understand the inward/outward relationship directions.',
     {},
-    async () => {
-      const linkTypes = await getIssueLinkTypes();
-      
-      // Simplify the response
-      const simplified = linkTypes.map(lt => ({
-        id: lt.id,
-        name: lt.name,
-        inward: lt.inward,
-        outward: lt.outward,
-      }));
+    async (args) => {
+      const callLog = startToolCall('jira_get_link_types', args);
+      try {
+        const linkTypes = await getIssueLinkTypes();
+        
+        // Simplify the response
+        const simplified = linkTypes.map(lt => ({
+          id: lt.id,
+          name: lt.name,
+          inward: lt.inward,
+          outward: lt.outward,
+        }));
 
-      return {
-        content: [{ type: 'text', text: JSON.stringify(simplified, null, 2) }],
-      };
+        endToolCall(callLog, simplified);
+        return {
+          content: [{ type: 'text', text: formatResponse(simplified) }],
+        };
+      } catch (err) {
+        failToolCall(callLog, err);
+        throw err;
+      }
     }
   );
 
@@ -175,11 +184,19 @@ export const registerLinkTools = (server: McpServer): void => {
       linkType: z.string().describe('Link type name from jira_get_link_types (e.g., "Blocks", "Clones", "Relates")'),
       comment: z.string().optional().describe('Optional comment explaining why these issues are linked'),
     },
-    async ({ inwardIssueKey, outwardIssueKey, linkType, comment }) => {
-      await createIssueLink(inwardIssueKey, outwardIssueKey, linkType, comment);
-      return {
-        content: [{ type: 'text', text: `Link created: ${inwardIssueKey} -> ${outwardIssueKey} (${linkType})` }],
-      };
+    async (args) => {
+      const callLog = startToolCall('jira_create_link', args);
+      try {
+        await createIssueLink(args.inwardIssueKey, args.outwardIssueKey, args.linkType, args.comment);
+        const result = { success: true, message: `Link created: ${args.inwardIssueKey} -> ${args.outwardIssueKey} (${args.linkType})` };
+        endToolCall(callLog, result);
+        return {
+          content: [{ type: 'text', text: result.message }],
+        };
+      } catch (err) {
+        failToolCall(callLog, err);
+        throw err;
+      }
     }
   );
 
@@ -190,11 +207,19 @@ export const registerLinkTools = (server: McpServer): void => {
     {
       linkId: z.string().describe('Link ID to delete (found in issueLinks when calling jira_get_issue)'),
     },
-    async ({ linkId }) => {
-      await deleteIssueLink(linkId);
-      return {
-        content: [{ type: 'text', text: `Link ${linkId} deleted successfully.` }],
-      };
+    async (args) => {
+      const callLog = startToolCall('jira_delete_link', args);
+      try {
+        await deleteIssueLink(args.linkId);
+        const result = { success: true, message: `Link ${args.linkId} deleted successfully.` };
+        endToolCall(callLog, result);
+        return {
+          content: [{ type: 'text', text: result.message }],
+        };
+      } catch (err) {
+        failToolCall(callLog, err);
+        throw err;
+      }
     }
   );
 
@@ -208,11 +233,18 @@ export const registerLinkTools = (server: McpServer): void => {
       title: z.string().describe('Display title for the link'),
       summary: z.string().optional().describe('Brief description of the linked resource'),
     },
-    async ({ issueKey, url, title, summary }) => {
-      const link = await createRemoteLink(issueKey, url, title, { summary });
-      return {
-        content: [{ type: 'text', text: `Remote link created. Link ID: ${link.id}` }],
-      };
+    async (args) => {
+      const callLog = startToolCall('jira_create_remote_link', args);
+      try {
+        const link = await createRemoteLink(args.issueKey, args.url, args.title, { summary: args.summary });
+        endToolCall(callLog, link);
+        return {
+          content: [{ type: 'text', text: `Remote link created. Link ID: ${link.id}` }],
+        };
+      } catch (err) {
+        failToolCall(callLog, err);
+        throw err;
+      }
     }
   );
 
@@ -223,21 +255,28 @@ export const registerLinkTools = (server: McpServer): void => {
     {
       issueKey: z.string().describe('Issue key to get external links for (e.g., KP-123)'),
     },
-    async ({ issueKey }) => {
-      const links = await getRemoteLinks(issueKey);
-      
-      // Simplify the response
-      const simplified = links.map(l => ({
-        id: l.id,
-        url: l.object.url,
-        title: l.object.title,
-        summary: l.object.summary,
-        relationship: l.relationship,
-      }));
+    async (args) => {
+      const callLog = startToolCall('jira_get_remote_links', args);
+      try {
+        const links = await getRemoteLinks(args.issueKey);
+        
+        // Simplify the response
+        const simplified = links.map(l => ({
+          id: l.id,
+          url: l.object.url,
+          title: l.object.title,
+          summary: l.object.summary,
+          relationship: l.relationship,
+        }));
 
-      return {
-        content: [{ type: 'text', text: JSON.stringify(simplified, null, 2) }],
-      };
+        endToolCall(callLog, simplified);
+        return {
+          content: [{ type: 'text', text: formatResponse(simplified) }],
+        };
+      } catch (err) {
+        failToolCall(callLog, err);
+        throw err;
+      }
     }
   );
 };

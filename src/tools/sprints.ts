@@ -7,6 +7,8 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 import { jiraAgileGet, jiraAgilePost, jiraAgilePut } from '../client.js';
+import { formatResponse } from '../config.js';
+import { startToolCall, endToolCall, failToolCall } from '../logger.js';
 import { toSimplifiedSprint, toSimplifiedSearchResult } from '../transformers.js';
 import type { JiraSprintsResult, JiraSprint, JiraSearchResult, SimplifiedSprint } from '../types.js';
 
@@ -134,11 +136,18 @@ export const registerSprintTools = (server: McpServer): void => {
       startAt: z.number().min(0).default(0).describe('Starting index for pagination'),
       maxResults: z.number().min(1).max(100).default(50).describe('Maximum number of results'),
     },
-    async ({ boardId, state, startAt, maxResults }) => {
-      const result = await getSprintsFromBoard(boardId, state, startAt, maxResults);
-      return {
-        content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
-      };
+    async (args) => {
+      const callLog = startToolCall('jira_get_sprints', args);
+      try {
+        const result = await getSprintsFromBoard(args.boardId, args.state, args.startAt, args.maxResults);
+        endToolCall(callLog, result);
+        return {
+          content: [{ type: 'text', text: formatResponse(result) }],
+        };
+      } catch (err) {
+        failToolCall(callLog, err);
+        throw err;
+      }
     }
   );
 
@@ -152,11 +161,18 @@ export const registerSprintTools = (server: McpServer): void => {
       startAt: z.number().min(0).default(0).describe('Starting index for pagination'),
       maxResults: z.number().min(1).max(100).default(50).describe('Maximum number of results'),
     },
-    async ({ sprintId, jql, startAt, maxResults }) => {
-      const result = await getSprintIssues(sprintId, jql, startAt, maxResults);
-      return {
-        content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
-      };
+    async (args) => {
+      const callLog = startToolCall('jira_get_sprint_issues', args);
+      try {
+        const result = await getSprintIssues(args.sprintId, args.jql, args.startAt, args.maxResults);
+        endToolCall(callLog, result);
+        return {
+          content: [{ type: 'text', text: formatResponse(result) }],
+        };
+      } catch (err) {
+        failToolCall(callLog, err);
+        throw err;
+      }
     }
   );
 
@@ -171,11 +187,19 @@ export const registerSprintTools = (server: McpServer): void => {
       startDate: z.string().optional().describe('Sprint start date (ISO format: 2024-01-15T09:00:00.000Z)'),
       endDate: z.string().optional().describe('Sprint end date (ISO format: 2024-01-29T17:00:00.000Z)'),
     },
-    async ({ name, boardId, goal, startDate, endDate }) => {
-      const sprint = await createSprint(name, boardId, { goal, startDate, endDate });
-      return {
-        content: [{ type: 'text', text: JSON.stringify(toSimplifiedSprint(sprint), null, 2) }],
-      };
+    async (args) => {
+      const callLog = startToolCall('jira_create_sprint', args);
+      try {
+        const sprint = await createSprint(args.name, args.boardId, { goal: args.goal, startDate: args.startDate, endDate: args.endDate });
+        const result = toSimplifiedSprint(sprint);
+        endToolCall(callLog, result);
+        return {
+          content: [{ type: 'text', text: formatResponse(result) }],
+        };
+      } catch (err) {
+        failToolCall(callLog, err);
+        throw err;
+      }
     }
   );
 
@@ -191,11 +215,19 @@ export const registerSprintTools = (server: McpServer): void => {
       endDate: z.string().optional().describe('New end date (ISO format)'),
       state: z.enum(['active', 'future', 'closed']).optional().describe('New state: active (start sprint), closed (complete sprint), future (revert to planned)'),
     },
-    async ({ sprintId, name, goal, startDate, endDate, state }) => {
-      const sprint = await updateSprint(sprintId, { name, goal, startDate, endDate, state });
-      return {
-        content: [{ type: 'text', text: JSON.stringify(toSimplifiedSprint(sprint), null, 2) }],
-      };
+    async (args) => {
+      const callLog = startToolCall('jira_update_sprint', args);
+      try {
+        const sprint = await updateSprint(args.sprintId, { name: args.name, goal: args.goal, startDate: args.startDate, endDate: args.endDate, state: args.state });
+        const result = toSimplifiedSprint(sprint);
+        endToolCall(callLog, result);
+        return {
+          content: [{ type: 'text', text: formatResponse(result) }],
+        };
+      } catch (err) {
+        failToolCall(callLog, err);
+        throw err;
+      }
     }
   );
 
@@ -207,11 +239,19 @@ export const registerSprintTools = (server: McpServer): void => {
       sprintId: z.number().describe('Target sprint ID (get from jira_get_sprints)'),
       issueKeys: z.array(z.string()).describe('Array of issue keys to move (e.g., ["KP-1", "KP-2", "KP-3"])'),
     },
-    async ({ sprintId, issueKeys }) => {
-      await moveIssuesToSprint(sprintId, issueKeys);
-      return {
-        content: [{ type: 'text', text: `Moved ${issueKeys.length} issue(s) to sprint ${sprintId}.` }],
-      };
+    async (args) => {
+      const callLog = startToolCall('jira_move_issues_to_sprint', args);
+      try {
+        await moveIssuesToSprint(args.sprintId, args.issueKeys);
+        const result = { success: true, message: `Moved ${args.issueKeys.length} issue(s) to sprint ${args.sprintId}.` };
+        endToolCall(callLog, result);
+        return {
+          content: [{ type: 'text', text: result.message }],
+        };
+      } catch (err) {
+        failToolCall(callLog, err);
+        throw err;
+      }
     }
   );
 };

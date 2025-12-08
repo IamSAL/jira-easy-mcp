@@ -7,6 +7,8 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 import { jiraGet, jiraPost, jiraDelete } from '../client.js';
+import { formatResponse } from '../config.js';
+import { startToolCall, endToolCall, failToolCall } from '../logger.js';
 import type { JiraWorklog, CreateWorklogResponse } from '../types.js';
 
 interface WorklogsResult {
@@ -111,29 +113,36 @@ export const registerWorklogTools = (server: McpServer): void => {
       startAt: z.number().min(0).default(0).describe('Starting index for pagination'),
       maxResults: z.number().min(1).max(100).default(50).describe('Maximum number of worklogs to return'),
     },
-    async ({ issueKey, startAt, maxResults }) => {
-      const result = await getWorklogs(issueKey, startAt, maxResults);
-      
-      // Simplify the response
-      const simplified = {
-        total: result.total,
-        startAt: result.startAt,
-        maxResults: result.maxResults,
-        worklogs: result.worklogs.map(w => ({
-          id: w.id,
-          author: w.author.displayName,
-          started: w.started,
-          timeSpent: w.timeSpent,
-          timeSpentSeconds: w.timeSpentSeconds,
-          comment: w.comment,
-          created: w.created,
-          updated: w.updated,
-        })),
-      };
+    async (args) => {
+      const callLog = startToolCall('jira_get_worklogs', args);
+      try {
+        const result = await getWorklogs(args.issueKey, args.startAt, args.maxResults);
+        
+        // Simplify the response
+        const simplified = {
+          total: result.total,
+          startAt: result.startAt,
+          maxResults: result.maxResults,
+          worklogs: result.worklogs.map(w => ({
+            id: w.id,
+            author: w.author.displayName,
+            started: w.started,
+            timeSpent: w.timeSpent,
+            timeSpentSeconds: w.timeSpentSeconds,
+            comment: w.comment,
+            created: w.created,
+            updated: w.updated,
+          })),
+        };
 
-      return {
-        content: [{ type: 'text', text: JSON.stringify(simplified, null, 2) }],
-      };
+        endToolCall(callLog, simplified);
+        return {
+          content: [{ type: 'text', text: formatResponse(simplified) }],
+        };
+      } catch (err) {
+        failToolCall(callLog, err);
+        throw err;
+      }
     }
   );
 
@@ -148,15 +157,22 @@ export const registerWorklogTools = (server: McpServer): void => {
       started: z.string().optional().describe('When the work was done (ISO format). Defaults to current time if not specified.'),
       adjustEstimate: z.enum(['auto', 'leave', 'new', 'manual']).optional().describe('How to adjust remaining estimate: auto (reduce by timeSpent), leave (don\'t change), new (set specific value), manual (reduce by specific amount)'),
     },
-    async ({ issueKey, timeSpent, comment, started, adjustEstimate }) => {
-      const result = await addWorklog(issueKey, timeSpent, {
-        comment,
-        started,
-        adjustEstimate,
-      });
-      return {
-        content: [{ type: 'text', text: `Worklog added successfully. Worklog ID: ${result.id}, Time logged: ${result.timeSpent}` }],
-      };
+    async (args) => {
+      const callLog = startToolCall('jira_add_worklog', args);
+      try {
+        const result = await addWorklog(args.issueKey, args.timeSpent, {
+          comment: args.comment,
+          started: args.started,
+          adjustEstimate: args.adjustEstimate,
+        });
+        endToolCall(callLog, result);
+        return {
+          content: [{ type: 'text', text: `Worklog added successfully. Worklog ID: ${result.id}, Time logged: ${result.timeSpent}` }],
+        };
+      } catch (err) {
+        failToolCall(callLog, err);
+        throw err;
+      }
     }
   );
 
@@ -169,11 +185,19 @@ export const registerWorklogTools = (server: McpServer): void => {
       worklogId: z.string().describe('Worklog ID to delete (get from jira_get_worklogs)'),
       adjustEstimate: z.enum(['auto', 'leave', 'new', 'manual']).optional().describe('How to adjust remaining estimate after deletion: auto (increase by deleted time), leave (don\'t change)'),
     },
-    async ({ issueKey, worklogId, adjustEstimate }) => {
-      await deleteWorklog(issueKey, worklogId, adjustEstimate);
-      return {
-        content: [{ type: 'text', text: `Worklog ${worklogId} deleted successfully.` }],
-      };
+    async (args) => {
+      const callLog = startToolCall('jira_delete_worklog', args);
+      try {
+        await deleteWorklog(args.issueKey, args.worklogId, args.adjustEstimate);
+        const result = { success: true, message: `Worklog ${args.worklogId} deleted successfully.` };
+        endToolCall(callLog, result);
+        return {
+          content: [{ type: 'text', text: result.message }],
+        };
+      } catch (err) {
+        failToolCall(callLog, err);
+        throw err;
+      }
     }
   );
 };

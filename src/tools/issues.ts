@@ -7,6 +7,8 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 import { jiraGet, jiraPost, jiraPut, jiraDelete } from '../client.js';
+import { formatResponse } from '../config.js';
+import { startToolCall, endToolCall, failToolCall } from '../logger.js';
 import { toSimplifiedIssue, toSimplifiedSearchResult } from '../transformers.js';
 import type {
   JiraIssue,
@@ -219,11 +221,16 @@ export const registerIssueTools = (server: McpServer): void => {
       startAt: z.number().min(0).default(0).describe('Starting index for pagination'),
       fields: z.array(z.string()).optional().describe('Specific fields to return (optional)'),
     },
-    async ({ jql, maxResults, startAt, fields }) => {
-      const result = await searchIssues(jql, maxResults, startAt, fields);
-      return {
-        content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
-      };
+    async (args) => {
+      const callLog = startToolCall('jira_search', args);
+      try {
+        const result = await searchIssues(args.jql, args.maxResults, args.startAt, args.fields);
+        endToolCall(callLog, result);
+        return { content: [{ type: 'text', text: formatResponse(result) }] };
+      } catch (err) {
+        failToolCall(callLog, err);
+        throw err;
+      }
     }
   );
 
@@ -235,11 +242,16 @@ export const registerIssueTools = (server: McpServer): void => {
       issueKey: z.string().describe('Issue key (e.g., KP-123) or numeric issue ID'),
       expand: z.array(z.string()).optional().describe('Fields to expand (e.g., changelog, renderedFields)'),
     },
-    async ({ issueKey, expand }) => {
-      const issue = await getIssue(issueKey, expand);
-      return {
-        content: [{ type: 'text', text: JSON.stringify(issue, null, 2) }],
-      };
+    async (args) => {
+      const callLog = startToolCall('jira_get_issue', args);
+      try {
+        const issue = await getIssue(args.issueKey, args.expand);
+        endToolCall(callLog, issue);
+        return { content: [{ type: 'text', text: formatResponse(issue) }] };
+      } catch (err) {
+        failToolCall(callLog, err);
+        throw err;
+      }
     }
   );
 
@@ -260,20 +272,25 @@ export const registerIssueTools = (server: McpServer): void => {
       dueDate: z.string().optional().describe('Due date in YYYY-MM-DD format'),
       parentKey: z.string().optional().describe('Parent issue key for subtasks'),
     },
-    async ({ projectKey, issueType, summary, description, assignee, priority, labels, components, fixVersions, dueDate, parentKey }) => {
-      const result = await createIssue(projectKey, issueType, summary, {
-        description,
-        assignee,
-        priority,
-        labels,
-        components,
-        fixVersions,
-        dueDate,
-        parentKey,
-      });
-      return {
-        content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
-      };
+    async (args) => {
+      const callLog = startToolCall('jira_create_issue', args);
+      try {
+        const result = await createIssue(args.projectKey, args.issueType, args.summary, {
+          description: args.description,
+          assignee: args.assignee,
+          priority: args.priority,
+          labels: args.labels,
+          components: args.components,
+          fixVersions: args.fixVersions,
+          dueDate: args.dueDate,
+          parentKey: args.parentKey,
+        });
+        endToolCall(callLog, result);
+        return { content: [{ type: 'text', text: formatResponse(result) }] };
+      } catch (err) {
+        failToolCall(callLog, err);
+        throw err;
+      }
     }
   );
 
@@ -292,20 +309,26 @@ export const registerIssueTools = (server: McpServer): void => {
       fixVersions: z.array(z.string()).optional().describe('New fix versions (replaces existing)'),
       dueDate: z.string().optional().describe('New due date in YYYY-MM-DD format'),
     },
-    async ({ issueKey, summary, description, assignee, priority, labels, components, fixVersions, dueDate }) => {
-      await updateIssue(issueKey, {
-        summary,
-        description,
-        assignee,
-        priority,
-        labels,
-        components,
-        fixVersions,
-        dueDate,
-      });
-      return {
-        content: [{ type: 'text', text: `Issue ${issueKey} updated successfully.` }],
-      };
+    async (args) => {
+      const callLog = startToolCall('jira_update_issue', args);
+      try {
+        await updateIssue(args.issueKey, {
+          summary: args.summary,
+          description: args.description,
+          assignee: args.assignee,
+          priority: args.priority,
+          labels: args.labels,
+          components: args.components,
+          fixVersions: args.fixVersions,
+          dueDate: args.dueDate,
+        });
+        const result = { success: true, message: `Issue ${args.issueKey} updated successfully.` };
+        endToolCall(callLog, result);
+        return { content: [{ type: 'text', text: result.message }] };
+      } catch (err) {
+        failToolCall(callLog, err);
+        throw err;
+      }
     }
   );
 
@@ -317,11 +340,17 @@ export const registerIssueTools = (server: McpServer): void => {
       issueKey: z.string().describe('Issue key to delete (e.g., KP-123)'),
       deleteSubtasks: z.boolean().default(false).describe('Set to true to also delete all subtasks. Required if the issue has subtasks.'),
     },
-    async ({ issueKey, deleteSubtasks }) => {
-      await deleteIssue(issueKey, deleteSubtasks);
-      return {
-        content: [{ type: 'text', text: `Issue ${issueKey} deleted successfully.` }],
-      };
+    async (args) => {
+      const callLog = startToolCall('jira_delete_issue', args);
+      try {
+        await deleteIssue(args.issueKey, args.deleteSubtasks);
+        const result = { success: true, message: `Issue ${args.issueKey} deleted successfully.` };
+        endToolCall(callLog, result);
+        return { content: [{ type: 'text', text: result.message }] };
+      } catch (err) {
+        failToolCall(callLog, err);
+        throw err;
+      }
     }
   );
 
@@ -334,11 +363,16 @@ export const registerIssueTools = (server: McpServer): void => {
       startAt: z.number().min(0).default(0).describe('Starting index for pagination'),
       maxResults: z.number().min(1).max(100).default(100).describe('Maximum number of results'),
     },
-    async ({ issueKey, startAt, maxResults }) => {
-      const changelog = await getIssueChangelog(issueKey, startAt, maxResults);
-      return {
-        content: [{ type: 'text', text: JSON.stringify(changelog, null, 2) }],
-      };
+    async (args) => {
+      const callLog = startToolCall('jira_get_changelog', args);
+      try {
+        const changelog = await getIssueChangelog(args.issueKey, args.startAt, args.maxResults);
+        endToolCall(callLog, changelog);
+        return { content: [{ type: 'text', text: formatResponse(changelog) }] };
+      } catch (err) {
+        failToolCall(callLog, err);
+        throw err;
+      }
     }
   );
 };

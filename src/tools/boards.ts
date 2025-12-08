@@ -7,6 +7,8 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 import { jiraAgileGet } from '../client.js';
+import { formatResponse } from '../config.js';
+import { startToolCall, endToolCall, failToolCall } from '../logger.js';
 import { toSimplifiedBoard } from '../transformers.js';
 import type { JiraBoardsResult, JiraSearchResult, SimplifiedBoard } from '../types.js';
 import { toSimplifiedSearchResult } from '../transformers.js';
@@ -83,11 +85,18 @@ export const registerBoardTools = (server: McpServer): void => {
       startAt: z.number().min(0).default(0).describe('Starting index for pagination'),
       maxResults: z.number().min(1).max(100).default(50).describe('Maximum number of results'),
     },
-    async ({ projectKey, type, startAt, maxResults }) => {
-      const result = await getBoards(projectKey, type, startAt, maxResults);
-      return {
-        content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
-      };
+    async (args) => {
+      const callLog = startToolCall('jira_get_boards', args);
+      try {
+        const result = await getBoards(args.projectKey, args.type, args.startAt, args.maxResults);
+        endToolCall(callLog, result);
+        return {
+          content: [{ type: 'text', text: formatResponse(result) }],
+        };
+      } catch (err) {
+        failToolCall(callLog, err);
+        throw err;
+      }
     }
   );
 
@@ -101,11 +110,18 @@ export const registerBoardTools = (server: McpServer): void => {
       startAt: z.number().min(0).default(0).describe('Starting index for pagination'),
       maxResults: z.number().min(1).max(100).default(50).describe('Maximum number of results'),
     },
-    async ({ boardId, jql, startAt, maxResults }) => {
-      const result = await getBoardIssues(boardId, jql, startAt, maxResults);
-      return {
-        content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
-      };
+    async (args) => {
+      const callLog = startToolCall('jira_get_board_issues', args);
+      try {
+        const result = await getBoardIssues(args.boardId, args.jql, args.startAt, args.maxResults);
+        endToolCall(callLog, result);
+        return {
+          content: [{ type: 'text', text: formatResponse(result) }],
+        };
+      } catch (err) {
+        failToolCall(callLog, err);
+        throw err;
+      }
     }
   );
 };

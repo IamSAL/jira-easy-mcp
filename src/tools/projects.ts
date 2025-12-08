@@ -8,7 +8,8 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 import { jiraGet, jiraPost } from '../client.js';
 import { toSimplifiedProject } from '../transformers.js';
-import { getConfig } from '../config.js';
+import { getConfig, formatResponse } from '../config.js';
+import { startToolCall, endToolCall, failToolCall } from '../logger.js';
 import type { JiraProject, JiraVersion, SimplifiedProject } from '../types.js';
 
 /**
@@ -79,11 +80,18 @@ export const registerProjectTools = (server: McpServer): void => {
     'jira_get_projects',
     'List all Jira projects the authenticated user has access to. Returns project keys, names, and lead information. Use this to discover available projects before searching for issues or creating new ones. If JIRA_PROJECTS_FILTER environment variable is set, only those specific projects are returned.',
     {},
-    async () => {
-      const projects = await getAllProjects();
-      return {
-        content: [{ type: 'text', text: JSON.stringify(projects, null, 2) }],
-      };
+    async (args) => {
+      const callLog = startToolCall('jira_get_projects', args);
+      try {
+        const projects = await getAllProjects();
+        endToolCall(callLog, projects);
+        return {
+          content: [{ type: 'text', text: formatResponse(projects) }],
+        };
+      } catch (err) {
+        failToolCall(callLog, err);
+        throw err;
+      }
     }
   );
 
@@ -94,11 +102,18 @@ export const registerProjectTools = (server: McpServer): void => {
     {
       projectKey: z.string().describe('Project key (e.g., KP, PROJ). Get from jira_get_projects.'),
     },
-    async ({ projectKey }) => {
-      const project = await getProject(projectKey);
-      return {
-        content: [{ type: 'text', text: JSON.stringify(project, null, 2) }],
-      };
+    async (args) => {
+      const callLog = startToolCall('jira_get_project', args);
+      try {
+        const project = await getProject(args.projectKey);
+        endToolCall(callLog, project);
+        return {
+          content: [{ type: 'text', text: formatResponse(project) }],
+        };
+      } catch (err) {
+        failToolCall(callLog, err);
+        throw err;
+      }
     }
   );
 
@@ -109,23 +124,30 @@ export const registerProjectTools = (server: McpServer): void => {
     {
       projectKey: z.string().describe('Project key (e.g., KP)'),
     },
-    async ({ projectKey }) => {
-      const versions = await getProjectVersions(projectKey);
-      
-      // Simplify the response
-      const simplified = versions.map(v => ({
-        id: v.id,
-        name: v.name,
-        description: v.description,
-        released: v.released,
-        archived: v.archived,
-        releaseDate: v.releaseDate,
-        startDate: v.startDate,
-      }));
+    async (args) => {
+      const callLog = startToolCall('jira_get_project_versions', args);
+      try {
+        const versions = await getProjectVersions(args.projectKey);
+        
+        // Simplify the response
+        const simplified = versions.map(v => ({
+          id: v.id,
+          name: v.name,
+          description: v.description,
+          released: v.released,
+          archived: v.archived,
+          releaseDate: v.releaseDate,
+          startDate: v.startDate,
+        }));
 
-      return {
-        content: [{ type: 'text', text: JSON.stringify(simplified, null, 2) }],
-      };
+        endToolCall(callLog, simplified);
+        return {
+          content: [{ type: 'text', text: formatResponse(simplified) }],
+        };
+      } catch (err) {
+        failToolCall(callLog, err);
+        throw err;
+      }
     }
   );
 
@@ -141,16 +163,23 @@ export const registerProjectTools = (server: McpServer): void => {
       startDate: z.string().optional().describe('Development start date (YYYY-MM-DD format)'),
       released: z.boolean().optional().describe('Set to true if this version has already been released'),
     },
-    async ({ projectKey, name, description, releaseDate, startDate, released }) => {
-      const version = await createVersion(projectKey, name, {
-        description,
-        releaseDate,
-        startDate,
-        released,
-      });
-      return {
-        content: [{ type: 'text', text: JSON.stringify(version, null, 2) }],
-      };
+    async (args) => {
+      const callLog = startToolCall('jira_create_version', args);
+      try {
+        const version = await createVersion(args.projectKey, args.name, {
+          description: args.description,
+          releaseDate: args.releaseDate,
+          startDate: args.startDate,
+          released: args.released,
+        });
+        endToolCall(callLog, version);
+        return {
+          content: [{ type: 'text', text: formatResponse(version) }],
+        };
+      } catch (err) {
+        failToolCall(callLog, err);
+        throw err;
+      }
     }
   );
 };

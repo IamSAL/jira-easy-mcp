@@ -7,6 +7,8 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 import { jiraGet } from '../client.js';
+import { formatResponse } from '../config.js';
+import { startToolCall, endToolCall, failToolCall } from '../logger.js';
 import type { JiraUser } from '../types.js';
 
 /**
@@ -81,11 +83,19 @@ export const registerUserTools = (server: McpServer): void => {
     'jira_get_myself',
     'Get profile information about the currently authenticated Jira user. Returns display name, email, username, timezone, and active status. Useful for verifying the connection and getting the current user\'s username for JQL queries like "assignee = currentUser()".',
     {},
-    async () => {
-      const user = await getCurrentUser();
-      return {
-        content: [{ type: 'text', text: JSON.stringify(simplifyUser(user), null, 2) }],
-      };
+    async (args) => {
+      const callLog = startToolCall('jira_get_myself', args);
+      try {
+        const user = await getCurrentUser();
+        const result = simplifyUser(user);
+        endToolCall(callLog, result);
+        return {
+          content: [{ type: 'text', text: formatResponse(result) }],
+        };
+      } catch (err) {
+        failToolCall(callLog, err);
+        throw err;
+      }
     }
   );
 
@@ -96,11 +106,19 @@ export const registerUserTools = (server: McpServer): void => {
     {
       username: z.string().describe('Exact username to look up (e.g., "jsmith", "john.doe")'),
     },
-    async ({ username }) => {
-      const user = await getUser(username);
-      return {
-        content: [{ type: 'text', text: JSON.stringify(simplifyUser(user), null, 2) }],
-      };
+    async (args) => {
+      const callLog = startToolCall('jira_get_user', args);
+      try {
+        const user = await getUser(args.username);
+        const result = simplifyUser(user);
+        endToolCall(callLog, result);
+        return {
+          content: [{ type: 'text', text: formatResponse(result) }],
+        };
+      } catch (err) {
+        failToolCall(callLog, err);
+        throw err;
+      }
     }
   );
 
@@ -113,11 +131,19 @@ export const registerUserTools = (server: McpServer): void => {
       startAt: z.number().min(0).default(0).describe('Starting index for pagination'),
       maxResults: z.number().min(1).max(100).default(50).describe('Maximum number of results'),
     },
-    async ({ query, startAt, maxResults }) => {
-      const users = await searchUsers(query, startAt, maxResults);
-      return {
-        content: [{ type: 'text', text: JSON.stringify(users.map(simplifyUser), null, 2) }],
-      };
+    async (args) => {
+      const callLog = startToolCall('jira_search_users', args);
+      try {
+        const users = await searchUsers(args.query, args.startAt, args.maxResults);
+        const result = users.map(simplifyUser);
+        endToolCall(callLog, result);
+        return {
+          content: [{ type: 'text', text: formatResponse(result) }],
+        };
+      } catch (err) {
+        failToolCall(callLog, err);
+        throw err;
+      }
     }
   );
 
@@ -131,11 +157,19 @@ export const registerUserTools = (server: McpServer): void => {
       startAt: z.number().min(0).default(0).describe('Starting index for pagination'),
       maxResults: z.number().min(1).max(100).default(50).describe('Maximum number of results'),
     },
-    async ({ projectKey, query, startAt, maxResults }) => {
-      const users = await getAssignableUsers(projectKey, query, startAt, maxResults);
-      return {
-        content: [{ type: 'text', text: JSON.stringify(users.map(simplifyUser), null, 2) }],
-      };
+    async (args) => {
+      const callLog = startToolCall('jira_get_assignable_users', args);
+      try {
+        const users = await getAssignableUsers(args.projectKey, args.query, args.startAt, args.maxResults);
+        const result = users.map(simplifyUser);
+        endToolCall(callLog, result);
+        return {
+          content: [{ type: 'text', text: formatResponse(result) }],
+        };
+      } catch (err) {
+        failToolCall(callLog, err);
+        throw err;
+      }
     }
   );
 };

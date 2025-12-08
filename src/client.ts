@@ -1,11 +1,33 @@
 /**
  * Jira MCP Server - API Client Module
  * 
- * Low-level HTTP client for Jira REST API with authentication.
+ * Low-level HTTP client for Jira REST API with authentication,
+ * retry logic, timeout handling, and SSL configuration.
  */
 
+import https from 'node:https';
 import { getConfig } from './config.js';
+import { logApiRequest, logApiResponse, logRetry, warn } from './logger.js';
 import type { JiraApiError } from './types.js';
+
+// Custom HTTPS agent for SSL configuration (lazy initialized)
+let httpsAgent: https.Agent | null = null;
+
+/**
+ * Get or create the HTTPS agent with SSL configuration.
+ */
+const getHttpsAgent = (): https.Agent => {
+  if (!httpsAgent) {
+    const { sslVerify } = getConfig();
+    httpsAgent = new https.Agent({
+      rejectUnauthorized: sslVerify,
+    });
+    if (!sslVerify) {
+      warn('SSL verification disabled - connections may be insecure');
+    }
+  }
+  return httpsAgent;
+};
 
 /**
  * Build Basic Auth header from credentials.
@@ -51,14 +73,39 @@ const parseErrorResponse = async (response: Response): Promise<string> => {
 };
 
 /**
- * Make authenticated request to Jira REST API v2.
+ * Check if an error is retryable.
+ */
+const isRetryableError = (status: number): boolean => {
+  // Retry on rate limiting, server errors, and gateway errors
+  return status === 429 || status === 502 || status === 503 || status === 504;
+};
+
+/**
+ * Sleep for a given number of milliseconds.
+ */
+const sleep = (ms: number): Promise<void> => 
+  new Promise(resolve => setTimeout(resolve, ms));
+
+/**
+ * Calculate exponential backoff delay.
+ */
+const calculateBackoff = (attempt: number, baseDelay: number): number => {
+  // Exponential backoff with jitter: baseDelay * 2^attempt + random jitter
+  const exponentialDelay = baseDelay * Math.pow(2, attempt);
+  const jitter = Math.random() * baseDelay;
+  return Math.min(exponentialDelay + jitter, 30000); // Cap at 30 seconds
+};
+
+/**
+ * Make authenticated request to Jira REST API v2 with retry and timeout.
  */
 export const jiraFetch = async <T = unknown>(
   endpoint: string,
   options: RequestInit = {}
 ): Promise<T> => {
-  const { baseUrl } = getConfig();
+  const { baseUrl, timeout, retryCount, retryDelay, sslVerify } = getConfig();
   const url = `${baseUrl}/rest/api/2${endpoint}`;
+  const method = options.method || 'GET';
 
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
@@ -67,56 +114,131 @@ export const jiraFetch = async <T = unknown>(
     ...(options.headers as Record<string, string> || {}),
   };
 
-  const response = await fetch(url, {
+  // Build fetch options with SSL agent for Node.js
+  const fetchOptions: RequestInit & { dispatcher?: unknown } = {
     ...options,
     headers,
-  });
+  };
 
-  if (!response.ok) {
-    const errorText = await parseErrorResponse(response);
-    
-    if (response.status === 401) {
-      throw new JiraApiException(
-        'Authentication failed. Check your JIRA_USERNAME and JIRA_PASSWORD.',
-        response.status
-      );
-    }
-    if (response.status === 403) {
-      throw new JiraApiException(
-        'Access forbidden. CAPTCHA may be triggered - log in via browser first, or check permissions.',
-        response.status
-      );
-    }
-    if (response.status === 404) {
-      throw new JiraApiException(
-        `Resource not found: ${errorText}`,
-        response.status
-      );
-    }
-    
-    throw new JiraApiException(
-      `Jira API error (${response.status}): ${errorText}`,
-      response.status
-    );
+  // Add SSL agent if we need to skip verification
+  if (!sslVerify && url.startsWith('https://')) {
+    // @ts-expect-error - Node.js fetch supports agent option
+    fetchOptions.agent = getHttpsAgent();
   }
 
-  // Handle empty responses (e.g., 204 No Content)
-  if (response.status === 204 || response.headers.get('content-length') === '0') {
-    return undefined as T;
+  let lastError: Error | null = null;
+  
+  for (let attempt = 0; attempt <= retryCount; attempt++) {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), timeout);
+    
+    try {
+      logApiRequest(method, url);
+      const startTime = Date.now();
+
+      const response = await fetch(url, {
+        ...fetchOptions,
+        signal: controller.signal,
+      });
+
+      clearTimeout(timeoutId);
+      const duration = Date.now() - startTime;
+      logApiResponse(method, url, response.status, duration);
+
+      if (!response.ok) {
+        const errorText = await parseErrorResponse(response);
+        
+        // Check if we should retry
+        if (isRetryableError(response.status) && attempt < retryCount) {
+          const delay = calculateBackoff(attempt, retryDelay);
+          logRetry(attempt + 1, retryCount, `HTTP ${response.status}`, delay);
+          await sleep(delay);
+          continue;
+        }
+        
+        if (response.status === 401) {
+          throw new JiraApiException(
+            'Authentication failed. Check your JIRA_USERNAME and JIRA_PASSWORD.',
+            response.status
+          );
+        }
+        if (response.status === 403) {
+          throw new JiraApiException(
+            'Access forbidden. CAPTCHA may be triggered - log in via browser first, or check permissions.',
+            response.status
+          );
+        }
+        if (response.status === 404) {
+          throw new JiraApiException(
+            `Resource not found: ${errorText}`,
+            response.status
+          );
+        }
+        if (response.status === 429) {
+          throw new JiraApiException(
+            'Rate limited by Jira. Please wait and try again.',
+            response.status
+          );
+        }
+        
+        throw new JiraApiException(
+          `Jira API error (${response.status}): ${errorText}`,
+          response.status
+        );
+      }
+
+      // Handle empty responses (e.g., 204 No Content)
+      if (response.status === 204 || response.headers.get('content-length') === '0') {
+        return undefined as T;
+      }
+
+      return response.json() as Promise<T>;
+      
+    } catch (err) {
+      clearTimeout(timeoutId);
+      
+      // Handle timeout/abort errors
+      if (err instanceof Error && err.name === 'AbortError') {
+        lastError = new JiraApiException(
+          `Request timeout after ${timeout}ms`,
+          0
+        );
+        
+        if (attempt < retryCount) {
+          const delay = calculateBackoff(attempt, retryDelay);
+          logRetry(attempt + 1, retryCount, 'timeout', delay);
+          await sleep(delay);
+          continue;
+        }
+        throw lastError;
+      }
+      
+      // Handle network errors (retryable)
+      if (err instanceof TypeError && attempt < retryCount) {
+        const delay = calculateBackoff(attempt, retryDelay);
+        logRetry(attempt + 1, retryCount, err.message, delay);
+        await sleep(delay);
+        lastError = err;
+        continue;
+      }
+      
+      throw err;
+    }
   }
 
-  return response.json() as Promise<T>;
+  throw lastError || new Error('Request failed after retries');
 };
 
 /**
- * Make authenticated request to Jira Agile REST API.
+ * Make authenticated request to Jira Agile REST API with retry and timeout.
  */
 export const jiraAgileFetch = async <T = unknown>(
   endpoint: string,
   options: RequestInit = {}
 ): Promise<T> => {
-  const { baseUrl } = getConfig();
+  const { baseUrl, timeout, retryCount, retryDelay, sslVerify } = getConfig();
   const url = `${baseUrl}/rest/agile/1.0${endpoint}`;
+  const method = options.method || 'GET';
 
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
@@ -125,24 +247,91 @@ export const jiraAgileFetch = async <T = unknown>(
     ...(options.headers as Record<string, string> || {}),
   };
 
-  const response = await fetch(url, {
+  // Build fetch options with SSL agent for Node.js
+  const fetchOptions: RequestInit & { dispatcher?: unknown } = {
     ...options,
     headers,
-  });
+  };
 
-  if (!response.ok) {
-    const errorText = await parseErrorResponse(response);
-    throw new JiraApiException(
-      `Jira Agile API error (${response.status}): ${errorText}`,
-      response.status
-    );
+  // Add SSL agent if we need to skip verification
+  if (!sslVerify && url.startsWith('https://')) {
+    // @ts-expect-error - Node.js fetch supports agent option
+    fetchOptions.agent = getHttpsAgent();
   }
 
-  if (response.status === 204 || response.headers.get('content-length') === '0') {
-    return undefined as T;
+  let lastError: Error | null = null;
+  
+  for (let attempt = 0; attempt <= retryCount; attempt++) {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), timeout);
+    
+    try {
+      logApiRequest(method, url);
+      const startTime = Date.now();
+
+      const response = await fetch(url, {
+        ...fetchOptions,
+        signal: controller.signal,
+      });
+
+      clearTimeout(timeoutId);
+      const duration = Date.now() - startTime;
+      logApiResponse(method, url, response.status, duration);
+
+      if (!response.ok) {
+        const errorText = await parseErrorResponse(response);
+        
+        // Check if we should retry
+        if (isRetryableError(response.status) && attempt < retryCount) {
+          const delay = calculateBackoff(attempt, retryDelay);
+          logRetry(attempt + 1, retryCount, `HTTP ${response.status}`, delay);
+          await sleep(delay);
+          continue;
+        }
+        
+        throw new JiraApiException(
+          `Jira Agile API error (${response.status}): ${errorText}`,
+          response.status
+        );
+      }
+
+      if (response.status === 204 || response.headers.get('content-length') === '0') {
+        return undefined as T;
+      }
+
+      return response.json() as Promise<T>;
+      
+    } catch (err) {
+      clearTimeout(timeoutId);
+      
+      if (err instanceof Error && err.name === 'AbortError') {
+        lastError = new JiraApiException(
+          `Request timeout after ${timeout}ms`,
+          0
+        );
+        
+        if (attempt < retryCount) {
+          const delay = calculateBackoff(attempt, retryDelay);
+          logRetry(attempt + 1, retryCount, 'timeout', delay);
+          await sleep(delay);
+          continue;
+        }
+        throw lastError;
+      }
+      
+      if (err instanceof TypeError && attempt < retryCount) {
+        const delay = calculateBackoff(attempt, retryDelay);
+        logRetry(attempt + 1, retryCount, err.message, delay);
+        await sleep(delay);
+        lastError = err;
+        continue;
+      }
+      
+      throw err;
+    }
   }
 
-  return response.json() as Promise<T>;
+  throw lastError || new Error('Request failed after retries');
 };
 
 /**

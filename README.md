@@ -81,14 +81,15 @@ Create `.vscode/mcp.json` in your project:
         "JIRA_BASE_URL": "https://your-jira-instance.com",
         "JIRA_USERNAME": "your-username",
         "JIRA_PASSWORD": "your-password",
-        "JIRA_PROJECTS_FILTER": "ABC,DEF,XYZ"
+        "JIRA_PROJECTS_FILTER": "ABC,DEF,XYZ",
+        "JIRA_RESPONSE_FORMAT": "JSON"
       }
     }
   }
 }
 ```
 
-> **Note:** `JIRA_PROJECTS_FILTER` is optional. If set, only the specified projects (comma-separated keys) will be accessible. Omit this to access all projects.
+> **Note:** `JIRA_PROJECTS_FILTER` and `JIRA_RESPONSE_FORMAT` are optional. Projects filter limits access to specified projects. Response format can be `JSON` (default) or `TOON` (text-oriented notation).
 
 ### Option 2: User Settings
 
@@ -105,7 +106,8 @@ Add to your VS Code `settings.json`:
           "JIRA_BASE_URL": "https://your-jira-instance.com",
           "JIRA_USERNAME": "your-username",
           "JIRA_PASSWORD": "your-password",
-          "JIRA_PROJECTS_FILTER": "ABC,DEF,XYZ"
+          "JIRA_PROJECTS_FILTER": "ABC,DEF,XYZ",
+          "JIRA_RESPONSE_FORMAT": "JSON"
         }
       }
     }
@@ -113,7 +115,7 @@ Add to your VS Code `settings.json`:
 }
 ```
 
-> **Note:** `JIRA_PROJECTS_FILTER` is optional. If set, only the specified projects (comma-separated keys) will be accessible.
+> **Note:** `JIRA_PROJECTS_FILTER` and `JIRA_RESPONSE_FORMAT` are optional.
 
 ### Using in VS Code
 
@@ -146,14 +148,15 @@ Add to your config file:
         "JIRA_BASE_URL": "https://your-jira-instance.com",
         "JIRA_USERNAME": "your-username",
         "JIRA_PASSWORD": "your-password",
-        "JIRA_PROJECTS_FILTER": "ABC,DEF,XYZ"
+        "JIRA_PROJECTS_FILTER": "ABC,DEF,XYZ",
+        "JIRA_RESPONSE_FORMAT": "JSON"
       }
     }
   }
 }
 ```
 
-> **Note:** `JIRA_PROJECTS_FILTER` is optional. If set, only the specified projects (comma-separated keys) will be accessible.
+> **Note:** `JIRA_PROJECTS_FILTER` and `JIRA_RESPONSE_FORMAT` are optional.
 
 ---
 
@@ -170,8 +173,29 @@ export JIRA_PASSWORD="your-password"
 # Optional: Limit to specific projects (comma-separated)
 export JIRA_PROJECTS_FILTER="ABC,DEF,XYZ"
 
+# Optional: Response format - JSON (default) or TOON
+export JIRA_RESPONSE_FORMAT="JSON"
+
+# Optional: Log level - DEBUG, INFO, WARN, ERROR (default: INFO)
+export JIRA_LOG_LEVEL="INFO"
+
 npx jira-basic-mcp
 ```
+
+### Advanced Configuration
+
+All optional environment variables:
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `JIRA_PROJECTS_FILTER` | *(none)* | Comma-separated project keys to limit access |
+| `JIRA_RESPONSE_FORMAT` | `JSON` | Response format: `JSON` or `TOON` |
+| `JIRA_LOG_LEVEL` | `INFO` | Log verbosity: `DEBUG`, `INFO`, `WARN`, `ERROR` |
+| `JIRA_TIMEOUT` | `30000` | Request timeout in milliseconds |
+| `JIRA_RETRY_COUNT` | `3` | Number of retries for failed requests |
+| `JIRA_RETRY_DELAY` | `1000` | Base delay between retries (ms) |
+| `JIRA_SSL_VERIFY` | `true` | Set to `false` to skip SSL verification |
+| `JIRA_CACHE_TTL` | `300` | Cache TTL in seconds for static data |
 
 ### Testing with MCP Inspector
 

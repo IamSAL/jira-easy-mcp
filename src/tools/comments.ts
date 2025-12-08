@@ -7,6 +7,8 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 import { jiraGet, jiraPost, jiraPut, jiraDelete } from '../client.js';
+import { formatResponse } from '../config.js';
+import { startToolCall, endToolCall, failToolCall } from '../logger.js';
 import type { JiraComment, CreateCommentResponse } from '../types.js';
 
 interface CommentsResult {
@@ -76,26 +78,33 @@ export const registerCommentTools = (server: McpServer): void => {
       startAt: z.number().min(0).default(0).describe('Starting index for pagination'),
       maxResults: z.number().min(1).max(100).default(50).describe('Maximum number of comments to return'),
     },
-    async ({ issueKey, startAt, maxResults }) => {
-      const result = await getComments(issueKey, startAt, maxResults);
-      
-      // Simplify the response
-      const simplified = {
-        total: result.total,
-        startAt: result.startAt,
-        maxResults: result.maxResults,
-        comments: result.comments.map(c => ({
-          id: c.id,
-          author: c.author.displayName,
-          body: c.body,
-          created: c.created,
-          updated: c.updated,
-        })),
-      };
+    async (args) => {
+      const callLog = startToolCall('jira_get_comments', args);
+      try {
+        const result = await getComments(args.issueKey, args.startAt, args.maxResults);
+        
+        // Simplify the response
+        const simplified = {
+          total: result.total,
+          startAt: result.startAt,
+          maxResults: result.maxResults,
+          comments: result.comments.map(c => ({
+            id: c.id,
+            author: c.author.displayName,
+            body: c.body,
+            created: c.created,
+            updated: c.updated,
+          })),
+        };
 
-      return {
-        content: [{ type: 'text', text: JSON.stringify(simplified, null, 2) }],
-      };
+        endToolCall(callLog, simplified);
+        return {
+          content: [{ type: 'text', text: formatResponse(simplified) }],
+        };
+      } catch (err) {
+        failToolCall(callLog, err);
+        throw err;
+      }
     }
   );
 
@@ -107,11 +116,18 @@ export const registerCommentTools = (server: McpServer): void => {
       issueKey: z.string().describe('Issue key to comment on (e.g., KP-123)'),
       body: z.string().describe('Comment text. Supports Jira wiki markup: *bold*, _italic_, {code}code{code}, [link|url]'),
     },
-    async ({ issueKey, body }) => {
-      const result = await addComment(issueKey, body);
-      return {
-        content: [{ type: 'text', text: `Comment added successfully. Comment ID: ${result.id}` }],
-      };
+    async (args) => {
+      const callLog = startToolCall('jira_add_comment', args);
+      try {
+        const result = await addComment(args.issueKey, args.body);
+        endToolCall(callLog, result);
+        return {
+          content: [{ type: 'text', text: `Comment added successfully. Comment ID: ${result.id}` }],
+        };
+      } catch (err) {
+        failToolCall(callLog, err);
+        throw err;
+      }
     }
   );
 
@@ -124,11 +140,19 @@ export const registerCommentTools = (server: McpServer): void => {
       commentId: z.string().describe('ID of the comment to update (get from jira_get_comments)'),
       body: z.string().describe('New comment text (replaces existing text entirely)'),
     },
-    async ({ issueKey, commentId, body }) => {
-      await updateComment(issueKey, commentId, body);
-      return {
-        content: [{ type: 'text', text: `Comment ${commentId} updated successfully.` }],
-      };
+    async (args) => {
+      const callLog = startToolCall('jira_update_comment', args);
+      try {
+        await updateComment(args.issueKey, args.commentId, args.body);
+        const result = { success: true, message: `Comment ${args.commentId} updated successfully.` };
+        endToolCall(callLog, result);
+        return {
+          content: [{ type: 'text', text: result.message }],
+        };
+      } catch (err) {
+        failToolCall(callLog, err);
+        throw err;
+      }
     }
   );
 
@@ -140,11 +164,19 @@ export const registerCommentTools = (server: McpServer): void => {
       issueKey: z.string().describe('Issue key containing the comment (e.g., KP-123)'),
       commentId: z.string().describe('ID of the comment to delete (get from jira_get_comments)'),
     },
-    async ({ issueKey, commentId }) => {
-      await deleteComment(issueKey, commentId);
-      return {
-        content: [{ type: 'text', text: `Comment ${commentId} deleted successfully.` }],
-      };
+    async (args) => {
+      const callLog = startToolCall('jira_delete_comment', args);
+      try {
+        await deleteComment(args.issueKey, args.commentId);
+        const result = { success: true, message: `Comment ${args.commentId} deleted successfully.` };
+        endToolCall(callLog, result);
+        return {
+          content: [{ type: 'text', text: result.message }],
+        };
+      } catch (err) {
+        failToolCall(callLog, err);
+        throw err;
+      }
     }
   );
 };

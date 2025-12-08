@@ -8,11 +8,22 @@
 // Configuration Types
 // =============================================================================
 
+export type ResponseFormat = 'JSON' | 'TOON';
+export type LogLevel = 'DEBUG' | 'INFO' | 'WARN' | 'ERROR';
+
 export interface JiraConfig {
   baseUrl: string;
   username: string;
   password: string;
   projectsFilter?: string[];
+  responseFormat: ResponseFormat;
+  // New configuration options
+  timeout: number;           // Request timeout in ms
+  retryCount: number;        // Number of retries for failed requests
+  retryDelay: number;        // Base delay between retries in ms
+  sslVerify: boolean;        // Whether to verify SSL certificates
+  logLevel: LogLevel;        // Logging verbosity
+  cacheTtl: number;          // Cache TTL in seconds
 }
 
 // =============================================================================

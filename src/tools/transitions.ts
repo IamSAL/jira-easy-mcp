@@ -7,6 +7,8 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 import { jiraGet, jiraPost } from '../client.js';
+import { formatResponse } from '../config.js';
+import { startToolCall, endToolCall, failToolCall } from '../logger.js';
 import { toSimplifiedTransition } from '../transformers.js';
 import type { JiraTransitionsResult, SimplifiedTransition } from '../types.js';
 
@@ -55,11 +57,18 @@ export const registerTransitionTools = (server: McpServer): void => {
     {
       issueKey: z.string().describe('Issue key to check transitions for (e.g., KP-123)'),
     },
-    async ({ issueKey }) => {
-      const transitions = await getTransitions(issueKey);
-      return {
-        content: [{ type: 'text', text: JSON.stringify(transitions, null, 2) }],
-      };
+    async (args) => {
+      const callLog = startToolCall('jira_get_transitions', args);
+      try {
+        const transitions = await getTransitions(args.issueKey);
+        endToolCall(callLog, transitions);
+        return {
+          content: [{ type: 'text', text: formatResponse(transitions) }],
+        };
+      } catch (err) {
+        failToolCall(callLog, err);
+        throw err;
+      }
     }
   );
 
@@ -72,11 +81,19 @@ export const registerTransitionTools = (server: McpServer): void => {
       transitionId: z.string().describe('Transition ID from jira_get_transitions (e.g., "21", "31")'),
       comment: z.string().optional().describe('Optional comment explaining why the status is changing'),
     },
-    async ({ issueKey, transitionId, comment }) => {
-      await transitionIssue(issueKey, transitionId, comment);
-      return {
-        content: [{ type: 'text', text: `Issue ${issueKey} transitioned successfully.` }],
-      };
+    async (args) => {
+      const callLog = startToolCall('jira_transition_issue', args);
+      try {
+        await transitionIssue(args.issueKey, args.transitionId, args.comment);
+        const result = { success: true, message: `Issue ${args.issueKey} transitioned successfully.` };
+        endToolCall(callLog, result);
+        return {
+          content: [{ type: 'text', text: result.message }],
+        };
+      } catch (err) {
+        failToolCall(callLog, err);
+        throw err;
+      }
     }
   );
 };

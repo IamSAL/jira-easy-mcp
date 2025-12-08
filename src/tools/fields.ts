@@ -7,6 +7,8 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 import { jiraGet } from '../client.js';
+import { formatResponse } from '../config.js';
+import { startToolCall, endToolCall, failToolCall } from '../logger.js';
 import type { JiraField, JiraIssueType } from '../types.js';
 
 /**
@@ -60,23 +62,30 @@ export const registerFieldTools = (server: McpServer): void => {
     {
       customOnly: z.boolean().default(false).describe('Set to true to only return custom fields, filtering out standard Jira fields'),
     },
-    async ({ customOnly }) => {
-      const fields = await getAllFields();
-      const filtered = customOnly ? fields.filter(f => f.custom) : fields;
-      
-      // Simplify the response
-      const simplified = filtered.map(f => ({
-        id: f.id,
-        name: f.name,
-        custom: f.custom,
-        searchable: f.searchable,
-        clauseNames: f.clauseNames,
-        type: f.schema?.type,
-      }));
+    async (args) => {
+      const callLog = startToolCall('jira_get_fields', args);
+      try {
+        const fields = await getAllFields();
+        const filtered = args.customOnly ? fields.filter(f => f.custom) : fields;
+        
+        // Simplify the response
+        const simplified = filtered.map(f => ({
+          id: f.id,
+          name: f.name,
+          custom: f.custom,
+          searchable: f.searchable,
+          clauseNames: f.clauseNames,
+          type: f.schema?.type,
+        }));
 
-      return {
-        content: [{ type: 'text', text: JSON.stringify(simplified, null, 2) }],
-      };
+        endToolCall(callLog, simplified);
+        return {
+          content: [{ type: 'text', text: formatResponse(simplified) }],
+        };
+      } catch (err) {
+        failToolCall(callLog, err);
+        throw err;
+      }
     }
   );
 
@@ -88,11 +97,18 @@ export const registerFieldTools = (server: McpServer): void => {
       projectKey: z.string().describe('Project key to get create metadata for (e.g., KP)'),
       issueTypes: z.array(z.string()).optional().describe('Optional: limit results to specific issue types (e.g., ["Bug", "Task"])'),
     },
-    async ({ projectKey, issueTypes }) => {
-      const meta = await getCreateMeta(projectKey, issueTypes);
-      return {
-        content: [{ type: 'text', text: JSON.stringify(meta, null, 2) }],
-      };
+    async (args) => {
+      const callLog = startToolCall('jira_get_create_meta', args);
+      try {
+        const meta = await getCreateMeta(args.projectKey, args.issueTypes);
+        endToolCall(callLog, meta);
+        return {
+          content: [{ type: 'text', text: formatResponse(meta) }],
+        };
+      } catch (err) {
+        failToolCall(callLog, err);
+        throw err;
+      }
     }
   );
 
@@ -103,20 +119,27 @@ export const registerFieldTools = (server: McpServer): void => {
     {
       projectKey: z.string().describe('Project key to list issue types for (e.g., KP)'),
     },
-    async ({ projectKey }) => {
-      const issueTypes = await getProjectIssueTypes(projectKey);
-      
-      // Simplify the response
-      const simplified = issueTypes.map(it => ({
-        id: it.id,
-        name: it.name,
-        description: it.description,
-        subtask: it.subtask,
-      }));
+    async (args) => {
+      const callLog = startToolCall('jira_get_issue_types', args);
+      try {
+        const issueTypes = await getProjectIssueTypes(args.projectKey);
+        
+        // Simplify the response
+        const simplified = issueTypes.map(it => ({
+          id: it.id,
+          name: it.name,
+          description: it.description,
+          subtask: it.subtask,
+        }));
 
-      return {
-        content: [{ type: 'text', text: JSON.stringify(simplified, null, 2) }],
-      };
+        endToolCall(callLog, simplified);
+        return {
+          content: [{ type: 'text', text: formatResponse(simplified) }],
+        };
+      } catch (err) {
+        failToolCall(callLog, err);
+        throw err;
+      }
     }
   );
 };
