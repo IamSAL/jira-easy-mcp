@@ -1,6 +1,6 @@
 {
   "name": "jira-basic-mcp",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "description": "MCP server for Jira with Basic Auth - works with username/password, no API tokens required",
   "type": "module",
   "main": "./dist/index.js",
@@ -31,11 +31,15 @@
     "claude",
     "ai"
   ],
-  "author": "",
+  "author": "IamSAL",
   "license": "ISC",
+  "homepage": "https://github.com/IamSAL/jira-basic-mcp#readme",
   "repository": {
     "type": "git",
-    "url": ""
+    "url": "git+https://github.com/IamSAL/jira-basic-mcp.git"
+  },
+  "bugs": {
+    "url": "https://github.com/IamSAL/jira-basic-mcp/issues"
   },
   "engines": {
     "node": ">=18.0.0"

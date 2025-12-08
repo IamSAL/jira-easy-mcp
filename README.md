@@ -1,4 +1,7 @@
-# jira-mcp
+# jira-basic-mcp
+
+[![npm version](https://img.shields.io/npm/v/jira-basic-mcp.svg)](https://www.npmjs.com/package/jira-basic-mcp)
+[![GitHub](https://img.shields.io/github/license/IamSAL/jira-basic-mcp)](https://github.com/IamSAL/jira-basic-mcp)
 
 A comprehensive Model Context Protocol (MCP) server for Jira integration. Provides **38 tools** for complete Jira automation including issues, projects, boards, sprints, comments, worklogs, and more.
 
