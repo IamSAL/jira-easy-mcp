@@ -1,12 +1,12 @@
 {
-  "name": "jira-browser-mcp",
-  "version": "1.0.0",
-  "description": "MCP server for Jira integration via browser automation using Playwright",
+  "name": "jira-basic-mcp",
+  "version": "1.1.0",
+  "description": "MCP server for Jira with Basic Auth - works with username/password, no API tokens required",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "bin": {
-    "jira-browser-mcp": "./dist/index.js"
+    "jira-basic-mcp": "./dist/index.js"
   },
   "files": [
     "dist",
@@ -26,8 +26,7 @@
     "mcp",
     "jira",
     "atlassian",
-    "browser",
-    "playwright",
+    "rest-api",
     "model-context-protocol",
     "claude",
     "ai"
@@ -43,7 +42,6 @@
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.0.0",
-    "playwright": "^1.40.0",
     "zod": "^3.22.0"
   },
   "devDependencies": {
