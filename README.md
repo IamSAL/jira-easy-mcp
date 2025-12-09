@@ -5,7 +5,7 @@
 
 A comprehensive Model Context Protocol (MCP) server for Jira integration. Provides **38 tools** for complete Jira automation including issues, projects, boards, sprints, comments, worklogs, and more.
 
-> **Tested on:** Jira Server v7.12.3 (self-hosted) and Jira Cloud
+> **Tested on:** Jira Server v7.12.3 (self-hosted)
 
 ---
 
@@ -18,56 +18,39 @@ Most Jira MCP servers require OAuth or API tokens, which many organizations rest
 - 🏢 **Enterprise environments** where admins don't allow API token creation
 - 🔒 **Self-hosted Jira Server** instances without OAuth configured
 - ⚡ **Quick setup** without going through IT approval processes
-- 🌐 **Jira Cloud** (also works with API tokens if you prefer)
 
 ---
 
-## Features
+## Common Use Cases
 
-- 🔐 **Basic Authentication** — Just username/password, no tokens needed
-- 🔍 **JQL Search** — Powerful issue search with full JQL support
-- 📋 **Issue Management** — Create, read, update, delete issues
-- 💬 **Comments** — Add, edit, delete comments with wiki markup
-- 🔄 **Workflows** — View and perform issue transitions
-- 📊 **Boards & Sprints** — Agile board and sprint management
-- ⏱️ **Worklogs** — Time tracking and work log management
-- 🔗 **Issue Links** — Create relationships between issues
-- 👥 **Users** — Search and lookup user information
-- 🏗️ **Projects** — List projects, issue types, and metadata
+| Task | Tool | Example Prompt |
+| --- | --- | --- |
+| **Search issues** | `jira_search` | "Search for all open bugs assigned to me in project ABC" |
+| **Get issue details** | `jira_get_issue` | "Show me the details of issue ABC-123" |
+| **Create issue** | `jira_create_issue` | "Create a new bug in project ABC with title 'Login button not working'" |
+| **Update issue** | `jira_update_issue` | "Change the priority of ABC-123 to High and assign it to john.doe" |
+| **Add comment** | `jira_add_comment` | "Add a comment to ABC-123 saying 'Fix deployed to staging'" |
+| **Change status** | `jira_transition_issue` | "Move ABC-123 to Done" |
+| **Log time** | `jira_add_worklog` | "Log 2 hours of work on ABC-123 for yesterday" |
+| **List projects** | `jira_get_projects` | "Show me all projects I have access to" |
+| **View sprints** | `jira_get_sprints` | "What's in the current sprint for project ABC?" |
+| **Link issues** | `jira_create_link` | "Link ABC-123 as blocking ABC-124" |
 
 ---
 
 ## Quick Start
 
-### 1. Installation
+### Get Required Values
 
-```bash
-npm install -g jira-basic-mcp
-```
-
-Or use directly with npx (no install needed):
-
-```bash
-npx jira-basic-mcp
-```
-
-### 2. Get Your Credentials
-
-**For Jira Server (self-hosted):**
-
+- URL: Your Jira instance domain
 - Username: Your Jira username
 - Password: Your regular Jira password
 
-**For Jira Cloud:**
-
-- Username: Your email address
-- Password: Your password OR an [API token](https://id.atlassian.com/manage-profile/security/api-tokens)
-
 ---
 
-## Usage with VS Code
+## Usage with IDE (cursor, github copilot)
 
-### Option 1: Workspace Configuration (Recommended)
+### Example: VS Code Workspace Configuration (Recommended)
 
 Create `.vscode/mcp.json` in your project:
 
@@ -91,113 +74,9 @@ Create `.vscode/mcp.json` in your project:
 
 > **Note:** `JIRA_PROJECTS_FILTER` and `JIRA_RESPONSE_FORMAT` are optional. Projects filter limits access to specified projects. Response format can be `JSON` (default) or `TOON` (text-oriented notation).
 
-### Option 2: User Settings
-
-Add to your VS Code `settings.json`:
-
-```json
-{
-  "mcp": {
-    "servers": {
-      "jira": {
-        "command": "npx",
-        "args": ["-y", "jira-basic-mcp"],
-        "env": {
-          "JIRA_BASE_URL": "https://your-jira-instance.com",
-          "JIRA_USERNAME": "your-username",
-          "JIRA_PASSWORD": "your-password",
-          "JIRA_PROJECTS_FILTER": "ABC,DEF,XYZ",
-          "JIRA_RESPONSE_FORMAT": "JSON"
-        }
-      }
-    }
-  }
-}
-```
-
-> **Note:** `JIRA_PROJECTS_FILTER` and `JIRA_RESPONSE_FORMAT` are optional.
-
-### Using in VS Code
-
-Once configured, you can ask GitHub Copilot things like:
-
-- *"Search for all open bugs in project ABC"*
-- *"Show me the details of issue ABC-123"*
-- *"Add a comment to ABC-123 saying the fix is ready for review"*
-- *"Transition ABC-123 to Done"*
-- *"Create a new bug in project ABC with title 'Login button not working'"*
-- *"What issues are assigned to me?"*
-- *"Show me the current sprint for project ABC"*
-
 ---
 
-## Usage with Claude Desktop
-
-Add to your config file:
-
-- **macOS:** `~/Library/Application Support/Claude/claude_desktop_config.json`
-- **Windows:** `%APPDATA%\Claude\claude_desktop_config.json`
-
-```json
-{
-  "mcpServers": {
-    "jira": {
-      "command": "npx",
-      "args": ["-y", "jira-basic-mcp"],
-      "env": {
-        "JIRA_BASE_URL": "https://your-jira-instance.com",
-        "JIRA_USERNAME": "your-username",
-        "JIRA_PASSWORD": "your-password",
-        "JIRA_PROJECTS_FILTER": "ABC,DEF,XYZ",
-        "JIRA_RESPONSE_FORMAT": "JSON"
-      }
-    }
-  }
-}
-```
-
-> **Note:** `JIRA_PROJECTS_FILTER` and `JIRA_RESPONSE_FORMAT` are optional.
-
----
-
-## Standalone Usage
-
-### Environment Variables
-
-```bash
-# Required
-export JIRA_BASE_URL="https://your-jira-instance.com"
-export JIRA_USERNAME="your-username"
-export JIRA_PASSWORD="your-password"
-
-# Optional: Limit to specific projects (comma-separated)
-export JIRA_PROJECTS_FILTER="ABC,DEF,XYZ"
-
-# Optional: Response format - JSON (default) or TOON
-export JIRA_RESPONSE_FORMAT="JSON"
-
-# Optional: Log level - DEBUG, INFO, WARN, ERROR (default: INFO)
-export JIRA_LOG_LEVEL="INFO"
-
-npx jira-basic-mcp
-```
-
-### Advanced Configuration
-
-All optional environment variables:
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `JIRA_PROJECTS_FILTER` | *(none)* | Comma-separated project keys to limit access |
-| `JIRA_RESPONSE_FORMAT` | `JSON` | Response format: `JSON` or `TOON` |
-| `JIRA_LOG_LEVEL` | `INFO` | Log verbosity: `DEBUG`, `INFO`, `WARN`, `ERROR` |
-| `JIRA_TIMEOUT` | `30000` | Request timeout in milliseconds |
-| `JIRA_RETRY_COUNT` | `3` | Number of retries for failed requests |
-| `JIRA_RETRY_DELAY` | `1000` | Base delay between retries (ms) |
-| `JIRA_SSL_VERIFY` | `true` | Set to `false` to skip SSL verification |
-| `JIRA_CACHE_TTL` | `300` | Cache TTL in seconds for static data |
-
-### Testing with MCP Inspector
+## Testing with MCP Inspector
 
 The MCP Inspector provides a web UI to test all tools interactively:
 
@@ -211,234 +90,33 @@ This opens a browser at `http://localhost:6274` where you can:
 - Test each tool with custom parameters
 - See the raw JSON responses
 
----
-
-## Available Tools (38 Total)
-
-### Issues (6 tools)
-
-
-| Tool                 | Description                                                                                                          |
-| ---------------------- | ---------------------------------------------------------------------------------------------------------------------- |
-| `jira_search`        | Search issues using JQL. Supports complex queries like`project = ABC AND status = Open AND assignee = currentUser()` |
-| `jira_get_issue`     | Get complete issue details including all fields, comments, and attachments                                           |
-| `jira_create_issue`  | Create a new issue. Use`jira_get_create_meta` first to discover required fields                                      |
-| `jira_update_issue`  | Update any field on an existing issue                                                                                |
-| `jira_delete_issue`  | Permanently delete an issue (use with caution!)                                                                      |
-| `jira_get_changelog` | Get the complete change history of an issue                                                                          |
-
-### Comments (4 tools)
-
-
-| Tool                  | Description                                                                 |
-| ----------------------- | ----------------------------------------------------------------------------- |
-| `jira_get_comments`   | Get all comments on an issue                                                |
-| `jira_add_comment`    | Add a comment. Supports wiki markup:`*bold*`, `_italic_`, `{code}...{code}` |
-| `jira_update_comment` | Edit an existing comment                                                    |
-| `jira_delete_comment` | Delete a comment                                                            |
-
-### Transitions (2 tools)
-
-
-| Tool                    | Description                                                                           |
-| ------------------------- | --------------------------------------------------------------------------------------- |
-| `jira_get_transitions`  | Get available workflow transitions (e.g., "To Do" → "In Progress" → "Done")         |
-| `jira_transition_issue` | Move issue to a new status. Get valid transition IDs from`jira_get_transitions` first |
-
-### Projects (4 tools)
-
-
-| Tool                   | Description                                                            |
-| ------------------------ | ------------------------------------------------------------------------ |
-| `jira_get_projects`    | List all accessible projects with keys and names                       |
-| `jira_get_project`     | Get detailed project information including lead, components, versions  |
-| `jira_get_issue_types` | Get available issue types for a project (Epic, Story, Task, Bug, etc.) |
-| `jira_get_create_meta` | Get required and optional fields for creating issues in a project      |
-
-### Boards (2 tools)
-
-
-| Tool              | Description                                                  |
-| ------------------- | -------------------------------------------------------------- |
-| `jira_get_boards` | List Scrum and Kanban boards, optionally filtered by project |
-| `jira_get_board`  | Get board details including type and configuration           |
-
-### Sprints (5 tools)
-
-
-| Tool                     | Description                                           |
-| -------------------------- | ------------------------------------------------------- |
-| `jira_get_sprints`       | List all sprints for a board (active, closed, future) |
-| `jira_get_sprint`        | Get sprint details including start/end dates and goal |
-| `jira_get_sprint_issues` | Get all issues in a specific sprint                   |
-| `jira_create_sprint`     | Create a new sprint                                   |
-| `jira_update_sprint`     | Update sprint name, dates, goal, or state             |
-
-### Worklogs (3 tools)
-
-
-| Tool                  | Description                                     |
-| ----------------------- | ------------------------------------------------- |
-| `jira_get_worklogs`   | Get all work logs for an issue                  |
-| `jira_add_worklog`    | Log time spent. Formats:`2h`, `30m`, `1d`, `1w` |
-| `jira_delete_worklog` | Delete a work log entry                         |
-
-### Issue Links (5 tools)
-
-
-| Tool                      | Description                                                 |
-| --------------------------- | ------------------------------------------------------------- |
-| `jira_get_link_types`     | Get available link types (Blocks, Clones, Relates to, etc.) |
-| `jira_create_link`        | Create a link between two issues                            |
-| `jira_delete_link`        | Remove an issue link                                        |
-| `jira_get_remote_links`   | Get external links (URLs) attached to an issue              |
-| `jira_create_remote_link` | Add an external URL link to an issue                        |
-
-### Users (4 tools)
-
-
-| Tool                        | Description                                          |
-| ----------------------------- | ------------------------------------------------------ |
-| `jira_get_myself`           | Get the currently authenticated user's profile       |
-| `jira_search_users`         | Search for users by name or email                    |
-| `jira_get_user`             | Get detailed user profile by account ID              |
-| `jira_get_assignable_users` | Get users who can be assigned to issues in a project |
-
-### Fields (3 tools)
-
-
-| Tool                     | Description                                               |
-| -------------------------- | ----------------------------------------------------------- |
-| `jira_get_fields`        | Get all available fields (system and custom)              |
-| `jira_get_field`         | Get details for a specific field including allowed values |
-| `jira_get_field_options` | Get dropdown options for select/multiselect fields        |
+> **Note:** Put these values inside inspector UI before connecting: `JIRA_BASE_URL`, `JIRA_USERNAME`, `JIRA_PASSWORD`.
 
 ---
 
-## Common Use Cases
+### Optional Environment Variables
 
-### Search Examples (JQL)
-
-```sql
-# Find my open issues
-assignee = currentUser() AND status != Done
-
-# Find bugs created this week
-project = ABC AND type = Bug AND created >= startOfWeek()
-
-# Find issues updated recently
-project = ABC AND updated >= -7d ORDER BY updated DESC
-
-# Find unassigned high priority issues
-project = ABC AND assignee is EMPTY AND priority = High
-```
-
-### Create Issue Example
-
-First, discover required fields:
-
-```text
-Tool: jira_get_create_meta
-Parameters: { "projectKey": "ABC", "issueTypeName": "Bug" }
-```
-
-Then create the issue:
-
-```text
-Tool: jira_create_issue
-Parameters: {
-  "projectKey": "ABC",
-  "issueType": "Bug",
-  "summary": "Login button not working on mobile",
-  "description": "Users cannot tap the login button on iOS devices.",
-  "priority": "High",
-  "labels": ["mobile", "ios"]
-}
-```
-
-### Transition Issue Example
-
-First, get available transitions:
-
-```text
-Tool: jira_get_transitions
-Parameters: { "issueKey": "ABC-123" }
-# Returns: [{ id: "31", name: "Done" }, { id: "21", name: "In Progress" }]
-```
-
-Then transition:
-
-```text
-Tool: jira_transition_issue
-Parameters: {
-  "issueKey": "ABC-123",
-  "transitionId": "31",
-  "comment": "Fixed in PR #456"
-}
-```
-
----
-
-## Development
-
-```bash
-# Clone the repository
-git clone <repo-url>
-cd jira-basic-mcp
-
-# Install dependencies
-pnpm install
-
-# Build
-pnpm build
-
-# Run in development mode (watch for changes)
-pnpm dev
-
-# Run the server
-pnpm start
-```
-
----
-
-## Troubleshooting
-
-### "401 Unauthorized"
-
-- ✅ Check username and password are correct
-- ✅ For Jira Cloud, you may need an API token instead of password
-- ✅ Verify the base URL is correct (no trailing slash)
-
-### "403 Forbidden"
-
-- ✅ Your account may lack permission for that resource
-- ✅ CAPTCHA may be triggered — log in via browser to reset
-
-### CAPTCHA Triggered
-
-If login fails multiple times, Jira may require CAPTCHA:
-
-1. Log into Jira via your web browser
-2. Complete the CAPTCHA challenge
-3. Try the API again
-
-### Connection Issues
-
-- ✅ Ensure JIRA_BASE_URL uses `https://`
-- ✅ Check for VPN/firewall requirements
-- ✅ Test with: `curl -u "user:pass" "https://your-jira/rest/api/2/myself"`
+| Variable | Default | Description |
+| --- | --- | --- |
+| `JIRA_PROJECTS_FILTER` | *(none)* | Comma-separated project keys to limit access |
+| `JIRA_RESPONSE_FORMAT` | `JSON` | Response format: `JSON` or `TOON` |
+| `JIRA_LOG_LEVEL` | `INFO` | Log verbosity: `DEBUG`, `INFO`, `WARN`, `ERROR` |
+| `JIRA_TIMEOUT` | `30000` | Request timeout in milliseconds |
+| `JIRA_RETRY_COUNT` | `3` | Number of retries for failed requests |
+| `JIRA_RETRY_DELAY` | `1000` | Base delay between retries (ms) |
+| `JIRA_SSL_VERIFY` | `true` | Set to `false` to skip SSL verification |
+| `JIRA_CACHE_TTL` | `300` | Cache TTL in seconds for static data |
 
 ---
 
 ## Compatibility
 
-
-| Jira Version        | Status         |
-| --------------------- | ---------------- |
-| Jira Server v7.12.3 | ✅ Tested      |
-| Jira Server v8.x    | ✅ Should work |
-| Jira Server v9.x    | ✅ Should work |
-| Jira Cloud          | ✅ Supported   |
+| Jira Version | Status |
+| --- | --- |
+| Jira Server v7.12.3 | ✅ Tested |
+| Jira Server v8.x | ✅ Should work |
+| Jira Server v9.x | ✅ Should work |
+| Jira Cloud | ✅ Should work |
 
 ---
 

@@ -213,20 +213,41 @@ export const getIssueChangelog = async (
 export const registerIssueTools = (server: McpServer): void => {
   // Search issues by JQL
   server.tool(
-    'jira_search',
-    'Search for Jira issues using JQL (Jira Query Language). Use this to find issues by project, status, assignee, labels, sprint, or any combination of criteria. Returns issue key, summary, status, assignee, and other fields. Common JQL examples: "project = KP", "assignee = currentUser()", "status = \"In Progress\"", "sprint in openSprints()", "labels = bug AND priority = High".',
+    "jira_search",
+    'Search for Jira issues using JQL (Jira Query Language). Use this to find issues by project, status, assignee, labels, sprint, or any combination of criteria. Returns issue key, summary, status, assignee, and other fields. Common JQL examples: "project = KP", "assignee = currentUser()", "status = "In Progress"", "sprint in openSprints()", "labels = bug AND priority = High". if its relevant for user to get a shareable link for the current search, user can get a link like https://konaway.konai.com/issues/?jql=project%20%3D%20KP%20AND%20issuetype%20%3D%20%22Portal%20Bug%22%20AND%20resolution%20%3D%20Unresolved%20ORDER%20BY%20priority%20DESC%2C%20updated%20DESC with the filters applied for current search.',
     {
-      jql: z.string().describe('JQL query string. Examples: "project = KP AND status = Open", "assignee = currentUser() ORDER BY updated DESC", "sprint in openSprints() AND status != Done"'),
-      maxResults: z.number().min(1).max(100).default(50).describe('Maximum number of results to return (1-100)'),
-      startAt: z.number().min(0).default(0).describe('Starting index for pagination'),
-      fields: z.array(z.string()).optional().describe('Specific fields to return (optional)'),
+      jql: z
+        .string()
+        .describe(
+          'JQL query string. Examples: "project = KP AND status = Open", "assignee = currentUser() ORDER BY updated DESC", "sprint in openSprints() AND status != Done"'
+        ),
+      maxResults: z
+        .number()
+        .min(1)
+        .max(100)
+        .default(50)
+        .describe("Maximum number of results to return (1-100)"),
+      startAt: z
+        .number()
+        .min(0)
+        .default(0)
+        .describe("Starting index for pagination"),
+      fields: z
+        .array(z.string())
+        .optional()
+        .describe("Specific fields to return (optional)"),
     },
     async (args) => {
-      const callLog = startToolCall('jira_search', args);
+      const callLog = startToolCall("jira_search", args);
       try {
-        const result = await searchIssues(args.jql, args.maxResults, args.startAt, args.fields);
+        const result = await searchIssues(
+          args.jql,
+          args.maxResults,
+          args.startAt,
+          args.fields
+        );
         endToolCall(callLog, result);
-        return { content: [{ type: 'text', text: formatResponse(result) }] };
+        return { content: [{ type: "text", text: formatResponse(result) }] };
       } catch (err) {
         failToolCall(callLog, err);
         throw err;
