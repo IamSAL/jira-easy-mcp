@@ -1,6 +1,6 @@
 {
   "name": "jira-basic-mcp",
-  "version": "1.1.6",
+  "version": "1.1.7",
   "description": "MCP server for Jira with Basic Auth - works with username/password, no API tokens required",
   "type": "module",
   "main": "./dist/index.js",
