@@ -119,8 +119,4 @@ This opens a browser at `http://localhost:6274` where you can:
 | Jira Cloud | ✅ Should work |
 
 **You can improve this by [reporting issues](https://github.com/IamSAL/jira-basic-mcp/issues/new/choose)**
----
 
-## License
-
-Vibe coded, go wild.
