@@ -19,12 +19,34 @@ import type {
 } from '../types.js';
 
 /**
- * Generate Jira filter URL with JQL.
+ * Generate Jira filter URL with JQL and validate by searching first.
+ * Detects platform (Cloud vs Server) and generates appropriate URL.
  */
-export const generateFilterUrl = (jql: string): string => {
+export const generateFilterUrl = async (jql: string): Promise<{
+  url: string;
+  jql: string;
+  total: number;
+  issues: SimplifiedIssue[];
+  maxResults: number;
+}> => {
   const { baseUrl } = getConfig();
+  
+  // First, validate the JQL by performing a search
+  const searchResult = await searchIssues(jql, 50, 0);
+  
+
   const encodedJql = encodeURIComponent(jql);
-  return `${baseUrl}/issues/?jql=${encodedJql}`;
+  
+  // Generate appropriate URL based on platform
+  const url = `${baseUrl}/issues/?jql=${encodedJql}`;
+  
+  return {
+    url,
+    jql,
+    total: searchResult.total,
+    issues: searchResult.issues,
+    maxResults: searchResult.maxResults,
+  };
 };
 
 /**
@@ -406,20 +428,32 @@ export const registerIssueTools = (server: McpServer): void => {
     }
   );
 
-  // Generate filter URL
+  // Generate filter URL with validation
   server.tool(
     'jira_generate_filter_url',
-    'Generate a Jira filter URL with a JQL query. Useful for creating shareable links to filtered issue lists. Common JQL examples: "updated >= -7d" (last 7 days), "created >= -1w" (last week), "assignee = currentUser() AND status = Open", "project = KP AND priority = High".',
+    'Generate a validated Jira filter URL with a JQL query. This tool first validates the JQL by searching Jira, then returns both the search results (first 50 issues) and a shareable URL. The URL format adapts automatically based on your Jira platform (Cloud vs Server). Use this to create shareable links and preview results. Common JQL examples: "updated >= -7d" (last 7 days), "created >= -1w" (last week), "assignee = currentUser() AND status = Open", "project = KP AND priority = High".',
     {
       jql: z.string().describe('JQL (Jira Query Language) query string. Examples: "updated >= -7d", "project = KP AND status = Open", "assignee = currentUser()"'),
     },
     async (args) => {
       const callLog = startToolCall('jira_generate_filter_url', args);
       try {
-        const url = generateFilterUrl(args.jql);
-        const result = { url, jql: args.jql };
+        const result = await generateFilterUrl(args.jql);
         endToolCall(callLog, result);
-        return { content: [{ type: 'text', text: formatResponse(result) }] };
+        
+        // Format the response to show both the results and the URL
+        const summary = {
+          url: result.url,
+          jql: result.jql,
+          summary: {
+            total: result.total,
+            returned: result.issues.length,
+            maxResults: result.maxResults,
+          },
+          issues: result.issues,
+        };
+        
+        return { content: [{ type: 'text', text: formatResponse(summary) }] };
       } catch (err) {
         failToolCall(callLog, err);
         throw err;

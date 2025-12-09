@@ -3,7 +3,7 @@
 [![npm version](https://img.shields.io/npm/v/jira-basic-mcp.svg)](https://www.npmjs.com/package/jira-basic-mcp)
 [![GitHub](https://img.shields.io/github/license/IamSAL/jira-basic-mcp)](https://github.com/IamSAL/jira-basic-mcp)
 
-A comprehensive Model Context Protocol (MCP) server for Jira integration. Provides **38 tools** for complete Jira automation including issues, projects, boards, sprints, comments, worklogs, and more.
+A comprehensive Model Context Protocol (MCP) server for Jira integration. Provides tools for complete Jira automation including issues, projects, boards, sprints, comments, worklogs, and more.
 
 > **Tested on:** Jira Server v7.12.3 (self-hosted)
 
@@ -35,6 +35,7 @@ Most Jira MCP servers require OAuth or API tokens, which many organizations rest
 | **List projects** | `jira_get_projects` | "Show me all projects I have access to" |
 | **View sprints** | `jira_get_sprints` | "What's in the current sprint for project ABC?" |
 | **Link issues** | `jira_create_link` | "Link ABC-123 as blocking ABC-124" |
+| **Generate filter URL** | `jira_generate_filter_url` | "Create a shareable link for all open bugs updated in the last 7 days" |
 
 ---
 
@@ -86,7 +87,7 @@ npx @modelcontextprotocol/inspector npx jira-basic-mcp
 
 This opens a browser at `http://localhost:6274` where you can:
 
-- View all 38 available tools
+- View all available tools
 - Test each tool with custom parameters
 - See the raw JSON responses
 
