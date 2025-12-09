@@ -7,7 +7,7 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 import { jiraGet, jiraPost, jiraPut, jiraDelete } from '../client.js';
-import { formatResponse } from '../config.js';
+import { formatResponse, getConfig } from '../config.js';
 import { startToolCall, endToolCall, failToolCall } from '../logger.js';
 import { toSimplifiedIssue, toSimplifiedSearchResult } from '../transformers.js';
 import type {
@@ -17,6 +17,15 @@ import type {
   SimplifiedIssue,
   SimplifiedSearchResult,
 } from '../types.js';
+
+/**
+ * Generate Jira filter URL with JQL.
+ */
+export const generateFilterUrl = (jql: string): string => {
+  const { baseUrl } = getConfig();
+  const encodedJql = encodeURIComponent(jql);
+  return `${baseUrl}/issues/?jql=${encodedJql}`;
+};
 
 /**
  * Search issues by JQL.
@@ -390,6 +399,27 @@ export const registerIssueTools = (server: McpServer): void => {
         const changelog = await getIssueChangelog(args.issueKey, args.startAt, args.maxResults);
         endToolCall(callLog, changelog);
         return { content: [{ type: 'text', text: formatResponse(changelog) }] };
+      } catch (err) {
+        failToolCall(callLog, err);
+        throw err;
+      }
+    }
+  );
+
+  // Generate filter URL
+  server.tool(
+    'jira_generate_filter_url',
+    'Generate a Jira filter URL with a JQL query. Useful for creating shareable links to filtered issue lists. Common JQL examples: "updated >= -7d" (last 7 days), "created >= -1w" (last week), "assignee = currentUser() AND status = Open", "project = KP AND priority = High".',
+    {
+      jql: z.string().describe('JQL (Jira Query Language) query string. Examples: "updated >= -7d", "project = KP AND status = Open", "assignee = currentUser()"'),
+    },
+    async (args) => {
+      const callLog = startToolCall('jira_generate_filter_url', args);
+      try {
+        const url = generateFilterUrl(args.jql);
+        const result = { url, jql: args.jql };
+        endToolCall(callLog, result);
+        return { content: [{ type: 'text', text: formatResponse(result) }] };
       } catch (err) {
         failToolCall(callLog, err);
         throw err;
