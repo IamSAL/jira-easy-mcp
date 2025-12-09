@@ -1,7 +1,7 @@
-# jira-basic-mcp
+# jira-easy-mcp
 
-[![npm version](https://img.shields.io/npm/v/jira-basic-mcp.svg)](https://www.npmjs.com/package/jira-basic-mcp)
-[![GitHub](https://img.shields.io/github/license/IamSAL/jira-basic-mcp)](https://github.com/IamSAL/jira-basic-mcp)
+[![npm version](https://img.shields.io/npm/v/jira-easy-mcp.svg)](https://www.npmjs.com/package/jira-easy-mcp)
+[![GitHub](https://img.shields.io/github/license/IamSAL/jira-easy-mcp)](https://github.com/IamSAL/jira-easy-mcp)
 
 Another Model Context Protocol (MCP) server for Jira, without Auth token. Provides tools for complete Jira automation including issues, projects, boards, sprints, comments, worklogs, and more.
 
@@ -60,7 +60,7 @@ Create `.vscode/mcp.json` in your project:
   "servers": {
     "jira": {
       "command": "npx",
-      "args": ["-y", "jira-basic-mcp"],
+      "args": ["-y", "jira-easy-mcp"],
       "env": {
         "JIRA_BASE_URL": "https://your-jira-instance.com",
         "JIRA_USERNAME": "your-username",
@@ -82,7 +82,7 @@ Create `.vscode/mcp.json` in your project:
 The MCP Inspector provides a web UI to test all tools interactively:
 
 ```bash
-npx @modelcontextprotocol/inspector npx jira-basic-mcp
+npx @modelcontextprotocol/inspector npx jira-easy-mcp
 ```
 
 This opens a browser at `http://localhost:6274` where you can:
@@ -119,5 +119,5 @@ This opens a browser at `http://localhost:6274` where you can:
 | Jira Server v9.x | ✅ Should work |
 | Jira Cloud | ✅ Should work |
 
-**You can improve this by [reporting issues](https://github.com/IamSAL/jira-basic-mcp/issues/new/choose)**
+**You can improve this by [reporting issues](https://github.com/IamSAL/jira-easy-mcp/issues/new/choose)**
 

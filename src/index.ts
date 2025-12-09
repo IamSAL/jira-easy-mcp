@@ -45,7 +45,7 @@ try {
 
 // Create MCP server
 const server = new McpServer({
-  name: 'jira-basic-mcp',
+  name: 'jira-easy-mcp',
   version: '1.1.0',
 });
 

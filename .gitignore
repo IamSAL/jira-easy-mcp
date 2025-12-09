@@ -25,4 +25,4 @@ pnpm-debug.log*
 .env.*.local
 
 # Browser data (for local development)
-.jira-basic-mcp-browser-data/
+.jira-easy-mcp-browser-data/
