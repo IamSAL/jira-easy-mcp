@@ -118,7 +118,7 @@ This opens a browser at `http://localhost:6274` where you can:
 | Jira Server v9.x | ✅ Should work |
 | Jira Cloud | ✅ Should work |
 
-**You can improve this by [reporting issues]([https://konaway.konai.com/issues/?jql=project%20%3D%20KP%20AND%20issuetype%20%3D%20Bug%20AND%20updated%20%3E%3D%20-3M%20ORDER%20BY%20updated%20DESC](https://github.com/IamSAL/jira-basic-mcp/issues/new/choose)**
+**You can improve this by [reporting issues](https://github.com/IamSAL/jira-basic-mcp/issues/new/choose)**
 ---
 
 ## License
