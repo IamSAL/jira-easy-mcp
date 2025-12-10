@@ -24,11 +24,9 @@ Most Jira MCP servers require OAuth or API tokens, which many organizations rest
 
 ## Quick Start
 
-## Usage with IDE (cursor, github copilot)
+### VS Code (Workspace Configuration)
 
-### Example: VS Code Workspace Configuration (Recommended)
-
-Create `.vscode/mcp.json` in your project:
+Create `.vscode/mcp.json` in your workspace root:
 
 ```json
 {
@@ -49,6 +47,14 @@ Create `.vscode/mcp.json` in your project:
 ```
 
 > **Note:** `JIRA_PROJECTS_FILTER` and `JIRA_RESPONSE_FORMAT` are optional. Projects filter limits access to specified projects. Response format can be `JSON` (default) or `TOON` (text-oriented notation).
+
+### Other IDEs
+
+**Cursor:** Create `.cursor/mcp.json` in workspace root (use `"mcp": { "servers": { ... } }` wrapper)  
+**Windsurf:** Create `.windsurf/mcp.json` in workspace root (use `"mcp": { "servers": { ... } }` wrapper)  
+**Claude Desktop:** Edit `~/.claude/mcp.json` (use `"mcpServers": { ... }` wrapper)
+
+All use the same `command`, `args`, and `env` configuration as VS Code above.
 
 
 ---
@@ -109,9 +115,8 @@ This opens a browser at `http://localhost:6274` where you can:
 | Jira Version | Status |
 | --- | --- |
 | Jira Server v7.12.3 | ✅ Tested |
-| Jira Server v8.x | ✅ Should work |
-| Jira Server v9.x | ✅ Should work |
-| Jira Cloud | ✅ Should work |
+| Jira Server v8.x | ✅ Tested |
+| Jira Cloud | ︖ Not tested (Use official MCP) |
 
 **You can improve this by [reporting issues](https://github.com/IamSAL/jira-easy-mcp/issues/new/choose)**
 
