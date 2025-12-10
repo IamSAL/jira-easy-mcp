@@ -32,6 +32,7 @@ Create `.vscode/mcp.json` in your workspace root:
 {
   "servers": {
     "jira": {
+      "type": "stdio",
       "command": "npx",
       "args": ["-y", "jira-easy-mcp"],
       "env": {
@@ -45,13 +46,14 @@ Create `.vscode/mcp.json` in your workspace root:
   }
 }
 ```
+Add to your VS Code settings for accessing in all workspaces.
 
 > **Note:** `JIRA_PROJECTS_FILTER` and `JIRA_RESPONSE_FORMAT` are optional. Projects filter limits access to specified projects. Response format can be `JSON` (default) or `TOON` (text-oriented notation).
 
 ### Other IDEs
 
-**Cursor:** Create `.cursor/mcp.json` in workspace root (use `"mcp": { "servers": { ... } }` wrapper)  
-**Windsurf:** Create `.windsurf/mcp.json` in workspace root (use `"mcp": { "servers": { ... } }` wrapper)  
+**Cursor:** Manually add the configuration above to your Cursor settings(use `"mcp": { "servers": { ... } }` wrapper)  
+**Windsurf:** Add to your Windsurf MCP settings: (use `"mcp": { "servers": { ... } }` wrapper)  
 **Claude Desktop:** Edit `~/.claude/mcp.json` (use `"mcpServers": { ... }` wrapper)
 
 All use the same `command`, `args`, and `env` configuration as VS Code above.
