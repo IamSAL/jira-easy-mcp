@@ -9,6 +9,8 @@ import { z } from 'zod';
 import { jiraGet, jiraPost, jiraPut, jiraDelete } from '../client.js';
 import { formatResponse, getConfig } from '../config.js';
 import { startToolCall, endToolCall, failToolCall } from '../logger.js';
+import { mergeCustomFields, customFieldsNeedNameResolve, resolveCustomFieldMap, isCustomFieldId, assertNoSystemWriteKeys } from '../custom-fields.js';
+import { getCreateMeta, getEditMeta, listFields } from './fields.js';
 import { toSimplifiedIssue, toSimplifiedSearchResult } from '../transformers.js';
 import type {
   JiraIssue,
@@ -17,6 +19,56 @@ import type {
   SimplifiedIssue,
   SimplifiedSearchResult,
 } from '../types.js';
+
+/**
+ * System fields getIssue always requested on master, minus collections that
+ * dominate payload size. comment / worklog / attachment are opt-in via include.
+ */
+export const MASTER_GET_ISSUE_FIELDS = [
+  'summary', 'status', 'priority', 'issuetype', 'assignee', 'reporter',
+  'description', 'labels', 'components', 'fixVersions', 'resolution',
+  'created', 'updated', 'duedate', 'parent', 'subtasks', 'issuelinks',
+  'timetracking', 'versions',
+] as const;
+
+const INCLUDE_FIELDS = {
+  comments: 'comment',
+  worklogs: 'worklog',
+  attachments: 'attachment',
+} as const;
+
+export type GetIssueInclude = keyof typeof INCLUDE_FIELDS;
+export type CustomFieldsMode = 'set' | 'all';
+
+export interface GetIssueOptions {
+  expand?: string[];
+  include?: GetIssueInclude[];
+  customFields?: CustomFieldsMode;
+  /** Custom field ids (customfield_11205) or unique edit-screen names (Severity). */
+  fields?: string[];
+}
+
+const SYSTEM_FIELD_IDS = new Set<string>([
+  ...MASTER_GET_ISSUE_FIELDS,
+  'comment', 'worklog', 'attachment', 'key', '*navigable', '*all',
+]);
+
+const customFieldsValueShape =
+  'Custom fields keyed by field id (e.g. customfield_10006) or a unique name from that issue type\'s meta. Values are raw Jira REST payloads, not display names.';
+
+export const createCustomFieldsParam = z
+  .record(z.unknown())
+  .optional()
+  .describe(
+    `${customFieldsValueShape} Call jira_get_create_meta for schema/allowedValues and unique names. Examples: number 5, string "text", select {"value":"Yes"}, Server user {"name":"username"}, multi-select [{"value":"A"}], null to clear. Do not call jira_get_fields before create.`
+  );
+
+export const updateCustomFieldsParam = z
+  .record(z.unknown())
+  .optional()
+  .describe(
+    `${customFieldsValueShape} Call jira_get_edit_meta for schema/allowedValues and unique names. Examples: number 5, string "text", select {"value":"Yes"}, Server user {"name":"username"}, multi-select [{"value":"A"}], null to clear. Do not call jira_get_fields before update.`
+  );
 
 /**
  * Generate Jira filter URL with JQL and validate by searching first.
@@ -49,6 +101,59 @@ export const generateFilterUrl = async (jql: string): Promise<{
   };
 };
 
+const collectionFields = (include?: GetIssueInclude[]): string[] =>
+  (include ?? []).map(item => INCLUDE_FIELDS[item]);
+
+const needsCatalogNameResolve = (tokens: string[]): boolean =>
+  tokens.some(token => !isCustomFieldId(token) && !SYSTEM_FIELD_IDS.has(token));
+
+const resolveTokensAgainstCatalog = async (tokens: string[]): Promise<string[]> => {
+  if (!needsCatalogNameResolve(tokens)) {
+    return tokens;
+  }
+
+  const catalog = await listFields();
+  return tokens.map(token => {
+    if (isCustomFieldId(token) || SYSTEM_FIELD_IDS.has(token) || catalog.some(field => field.id === token)) {
+      return token;
+    }
+    const matches = catalog.filter(field => field.name === token);
+    if (matches.length === 1) {
+      return matches[0].id;
+    }
+    if (matches.length > 1) {
+      throw new Error(
+        `Field name "${token}" matches multiple fields: ${matches.map(field => field.id).join(', ')}. Use a field id.`
+      );
+    }
+    throw new Error(
+      `Unknown field "${token}". Use a customfield_ id or a unique name from jira_get_fields.`
+    );
+  });
+};
+
+const resolveTokensAgainstNamedFields = (
+  tokens: string[],
+  namedFields: Array<{ id: string; name: string }>
+): string[] =>
+  tokens.map(token => {
+    if (isCustomFieldId(token) || SYSTEM_FIELD_IDS.has(token)) {
+      return token;
+    }
+    const matches = namedFields.filter(field => field.name === token);
+    if (matches.length === 1) {
+      return matches[0].id;
+    }
+    if (matches.length > 1) {
+      throw new Error(
+        `Field name "${token}" matches multiple fields: ${matches.map(field => field.id).join(', ')}. Use a field id.`
+      );
+    }
+    throw new Error(
+      `Unknown field "${token}". Use a customfield_ id or a unique name from jira_get_edit_meta.`
+    );
+  });
+
 /**
  * Search issues by JQL.
  */
@@ -62,44 +167,69 @@ export const searchIssues = async (
     'summary', 'status', 'priority', 'issuetype', 'assignee', 'reporter',
     'description', 'labels', 'components', 'fixVersions', 'resolution',
     'created', 'updated', 'duedate', 'parent', 'subtasks', 'issuelinks',
-    'comment', 'worklog', 'attachment', 'timetracking'
+    'timetracking',
   ];
+
+  const extras = fields && fields.length > 0
+    ? await resolveTokensAgainstCatalog(fields)
+    : [];
+  const requested = extras.length > 0
+    ? [...defaultFields, ...extras.filter(token => !defaultFields.includes(token))]
+    : defaultFields;
+  const customFieldIds = requested.filter(isCustomFieldId);
 
   const params = new URLSearchParams({
     jql,
     maxResults: maxResults.toString(),
     startAt: startAt.toString(),
-    fields: (fields || defaultFields).join(','),
+    fields: requested.join(','),
   });
+  if (customFieldIds.length > 0) {
+    params.set('expand', 'names');
+  }
 
   const result = await jiraGet<JiraSearchResult>(`/search?${params}`);
-  return toSimplifiedSearchResult(result);
+  return toSimplifiedSearchResult(result, {
+    includeNullCustomFields: customFieldIds.length > 0,
+    customFieldIds: customFieldIds.length > 0 ? customFieldIds : undefined,
+  });
 };
+
+const mergeExpand = (expand?: string[]): string =>
+  ['names', ...(expand ?? []).filter(item => item !== 'names')].join(',');
 
 /**
  * Get a single issue by key or ID.
  */
 export const getIssue = async (
   issueKey: string,
-  expand?: string[]
+  options: GetIssueOptions = {}
 ): Promise<SimplifiedIssue> => {
-  const fields = [
-    'summary', 'status', 'priority', 'issuetype', 'assignee', 'reporter',
-    'description', 'labels', 'components', 'fixVersions', 'resolution',
-    'created', 'updated', 'duedate', 'parent', 'subtasks', 'issuelinks',
-    'comment', 'worklog', 'attachment', 'timetracking', 'versions'
-  ];
+  const extra = collectionFields(options.include);
+  const requested = options.fields;
+  let fieldList: string[];
+  let includeNullCustomFields = options.customFields === 'all';
+  let customFieldIds: string[] | undefined;
 
-  const params = new URLSearchParams({
-    fields: fields.join(','),
-  });
-
-  if (expand && expand.length > 0) {
-    params.set('expand', expand.join(','));
+  if (requested && requested.length > 0) {
+    const named = requested.some(token => !isCustomFieldId(token) && !SYSTEM_FIELD_IDS.has(token));
+    const resolved = named
+      ? resolveTokensAgainstNamedFields(requested, (await getEditMeta(issueKey)).fields)
+      : requested;
+    customFieldIds = resolved.filter(isCustomFieldId);
+    fieldList = [...MASTER_GET_ISSUE_FIELDS, ...extra, ...customFieldIds];
+    includeNullCustomFields = true;
+  } else {
+    fieldList = ['*navigable', ...MASTER_GET_ISSUE_FIELDS, ...extra];
   }
 
+  const params = new URLSearchParams({
+    fields: fieldList.join(','),
+    expand: mergeExpand(options.expand),
+  });
+
   const issue = await jiraGet<JiraIssue>(`/issue/${issueKey}?${params}`);
-  return toSimplifiedIssue(issue);
+  return toSimplifiedIssue(issue, { includeNullCustomFields, customFieldIds });
 };
 
 /**
@@ -151,9 +281,18 @@ export const createIssue = async (
   if (options?.parentKey) {
     fields.parent = { key: options.parentKey };
   }
-  if (options?.customFields) {
-    Object.assign(fields, options.customFields);
-  }
+  assertNoSystemWriteKeys(options?.customFields);
+  mergeCustomFields(
+    fields,
+    customFieldsNeedNameResolve(options?.customFields)
+      ? resolveCustomFieldMap(
+        options?.customFields,
+        (await getCreateMeta(projectKey, [issueType])).issueTypes.find(
+          type => type.name === issueType
+        )?.fields ?? []
+      )
+      : options?.customFields
+  );
 
   return jiraPost<CreateIssueResponse>('/issue', { fields });
 };
@@ -201,9 +340,15 @@ export const updateIssue = async (
   if (updates.dueDate !== undefined) {
     fields.duedate = updates.dueDate;
   }
-  if (updates.customFields) {
-    Object.assign(fields, updates.customFields);
+  let customFields = updates.customFields;
+  assertNoSystemWriteKeys(customFields);
+  if (customFieldsNeedNameResolve(customFields)) {
+    customFields = resolveCustomFieldMap(
+      customFields,
+      (await getEditMeta(issueKey)).fields
+    );
   }
+  mergeCustomFields(fields, customFields);
 
   await jiraPut(`/issue/${issueKey}`, { fields });
 };
@@ -266,7 +411,7 @@ export const registerIssueTools = (server: McpServer): void => {
       fields: z
         .array(z.string())
         .optional()
-        .describe("Specific fields to return (optional)"),
+        .describe("Optional extra fields. System keys (summary) and customfield_ ids pass through. Display names (Severity) are resolved with a live GET /field — prefer ids. Default search omits custom fields."),
     },
     async (args) => {
       const callLog = startToolCall("jira_search", args);
@@ -289,15 +434,26 @@ export const registerIssueTools = (server: McpServer): void => {
   // Get issue details
   server.tool(
     'jira_get_issue',
-    'Get full details of a specific Jira issue including summary, description, status, assignee, reporter, priority, comments, worklogs, attachments, subtasks, and linked issues. Use this when you need comprehensive information about a single issue or want to see its current state, history, or relationships.',
+    'Get an issue: system fields plus custom fields that currently have a value, each as {id, name, value}. Comments, worklogs, and attachments are omitted unless include lists them. Null custom fields are omitted unless customFields is "all". To fetch specific custom fields (including empty ones), pass fields as customfield_ ids or unique edit-screen names (Severity). Call jira_get_edit_meta to see writable fields; do not call jira_get_fields for an update.',
     {
       issueKey: z.string().describe('Issue key (e.g., KP-123) or numeric issue ID'),
-      expand: z.array(z.string()).optional().describe('Fields to expand (e.g., changelog, renderedFields)'),
+      expand: z.array(z.string()).optional().describe('Jira expand values in addition to names (e.g., changelog, renderedFields)'),
+      include: z.array(z.enum(['comments', 'worklogs', 'attachments'])).optional()
+        .describe('Collections to include. Default omits comments, worklogs, and attachments.'),
+      customFields: z.enum(['set', 'all']).optional()
+        .describe('set (default): only custom fields with values. all: include navigable custom fields that are null.'),
+      fields: z.array(z.string()).optional()
+        .describe('Narrow custom-field GET. Ids (customfield_11205) or unique editmeta names (Severity). Replaces *navigable for custom fields; requested fields are returned even if null.'),
     },
     async (args) => {
       const callLog = startToolCall('jira_get_issue', args);
       try {
-        const issue = await getIssue(args.issueKey, args.expand);
+        const issue = await getIssue(args.issueKey, {
+          expand: args.expand,
+          include: args.include,
+          customFields: args.customFields,
+          fields: args.fields,
+        });
         endToolCall(callLog, issue);
         return { content: [{ type: 'text', text: formatResponse(issue) }] };
       } catch (err) {
@@ -310,7 +466,7 @@ export const registerIssueTools = (server: McpServer): void => {
   // Create issue
   server.tool(
     'jira_create_issue',
-    'Create a new Jira issue (bug, task, story, epic, subtask, etc.) in a project. Use jira_get_issue_types first if unsure which issue types are available. For subtasks, provide the parentKey. Returns the new issue key and URL.',
+    'Create a new Jira issue (bug, task, story, epic, subtask, etc.) in a project. Use jira_get_issue_types first if unsure which issue types are available. For subtasks, provide the parentKey. For custom fields, pass customFields keyed by field id or a unique name from jira_get_create_meta (not jira_get_fields). Returns the new issue key and URL.',
     {
       projectKey: z.string().describe('Project key (e.g., KP). Use jira_get_projects to list available projects'),
       issueType: z.string().describe('Issue type name (e.g., Bug, Task, Story, Epic, Sub-task). Use jira_get_issue_types to see available types'),
@@ -323,6 +479,7 @@ export const registerIssueTools = (server: McpServer): void => {
       fixVersions: z.array(z.string()).optional().describe('Fix version names'),
       dueDate: z.string().optional().describe('Due date in YYYY-MM-DD format'),
       parentKey: z.string().optional().describe('Parent issue key for subtasks'),
+      customFields: createCustomFieldsParam,
     },
     async (args) => {
       const callLog = startToolCall('jira_create_issue', args);
@@ -336,6 +493,7 @@ export const registerIssueTools = (server: McpServer): void => {
           fixVersions: args.fixVersions,
           dueDate: args.dueDate,
           parentKey: args.parentKey,
+          customFields: args.customFields,
         });
         endToolCall(callLog, result);
         return { content: [{ type: 'text', text: formatResponse(result) }] };
@@ -349,7 +507,7 @@ export const registerIssueTools = (server: McpServer): void => {
   // Update issue
   server.tool(
     'jira_update_issue',
-    'Modify an existing Jira issue\'s fields (summary, description, assignee, priority, labels, components, fix versions, due date). Only the fields you specify will be changed - others remain unchanged. To change status/workflow state, use jira_transition_issue instead. To add comments, use jira_add_comment.',
+    'Modify an existing Jira issue\'s fields (summary, description, assignee, priority, labels, components, fix versions, due date, custom fields). Only the fields you specify will be changed - others remain unchanged. Custom fields use field ids (customfield_10006) or a unique name from jira_get_edit_meta, with raw REST values. Do not call jira_get_fields before writing. To change status/workflow state, use jira_transition_issue instead. To add comments, use jira_add_comment.',
     {
       issueKey: z.string().describe('Issue key to update (e.g., KP-123)'),
       summary: z.string().optional().describe('New issue title/summary'),
@@ -360,6 +518,7 @@ export const registerIssueTools = (server: McpServer): void => {
       components: z.array(z.string()).optional().describe('New components (replaces existing)'),
       fixVersions: z.array(z.string()).optional().describe('New fix versions (replaces existing)'),
       dueDate: z.string().optional().describe('New due date in YYYY-MM-DD format'),
+      customFields: updateCustomFieldsParam,
     },
     async (args) => {
       const callLog = startToolCall('jira_update_issue', args);
@@ -373,6 +532,7 @@ export const registerIssueTools = (server: McpServer): void => {
           components: args.components,
           fixVersions: args.fixVersions,
           dueDate: args.dueDate,
+          customFields: args.customFields,
         });
         const result = { success: true, message: `Issue ${args.issueKey} updated successfully.` };
         endToolCall(callLog, result);

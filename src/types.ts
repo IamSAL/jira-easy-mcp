@@ -233,6 +233,7 @@ export interface JiraIssue {
   key: string;
   self: string;
   expand?: string;
+  names?: Record<string, string>;
   fields: JiraIssueFields;
   renderedFields?: Record<string, unknown>;
   changelog?: {
@@ -365,6 +366,14 @@ export interface JiraSprintsResult {
 // Field Types
 // =============================================================================
 
+export interface JiraFieldSchema {
+  type: string;
+  system?: string;
+  custom?: string;
+  customId?: number;
+  items?: string;
+}
+
 export interface JiraField {
   id: string;
   name: string;
@@ -373,12 +382,67 @@ export interface JiraField {
   navigable: boolean;
   searchable: boolean;
   clauseNames?: string[];
-  schema?: {
-    type: string;
-    system?: string;
-    custom?: string;
-    customId?: number;
-  };
+  schema?: JiraFieldSchema;
+}
+
+export interface JiraEditMetaField {
+  required: boolean;
+  name: string;
+  operations?: string[];
+  allowedValues?: unknown[];
+  schema?: JiraFieldSchema;
+}
+
+export interface JiraEditMeta {
+  fields: Record<string, JiraEditMetaField>;
+}
+
+export interface JiraCreateMeta {
+  projects?: Array<{
+    key?: string;
+    issuetypes?: Array<{
+      id: string;
+      name: string;
+      subtask?: boolean;
+      fields?: Record<string, JiraEditMetaField>;
+    }>;
+  }>;
+}
+
+export interface SimplifiedAllowedValue {
+  id?: string;
+  value?: string;
+  name?: string;
+  disabled?: boolean;
+  children?: SimplifiedAllowedValue[];
+}
+
+export interface SimplifiedEditMetaField {
+  id: string;
+  name: string;
+  required: boolean;
+  type?: string;
+  itemsType?: string;
+  customType?: string;
+  operations: string[];
+  allowedValues?: SimplifiedAllowedValue[];
+}
+
+export interface SimplifiedEditMeta {
+  issueKey: string;
+  fields: SimplifiedEditMetaField[];
+}
+
+export interface SimplifiedCreateMetaIssueType {
+  id: string;
+  name: string;
+  subtask: boolean;
+  fields: SimplifiedEditMetaField[];
+}
+
+export interface SimplifiedCreateMeta {
+  projectKey: string;
+  issueTypes: SimplifiedCreateMetaIssueType[];
 }
 
 // =============================================================================
@@ -503,7 +567,13 @@ export interface SimplifiedIssue {
     remainingEstimate?: string;
     timeSpent?: string;
   };
-  customFields: Record<string, unknown>;
+  customFields: SimplifiedCustomField[];
+}
+
+export interface SimplifiedCustomField {
+  id: string;
+  name?: string;
+  value: unknown;
 }
 
 export interface SimplifiedSearchResult {

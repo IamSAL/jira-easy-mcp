@@ -136,11 +136,11 @@ const toToon = (obj: unknown, indent: number = 0): string => {
     if (obj.every(item => typeof item === 'string' || typeof item === 'number')) {
       return `[${obj.join(', ')}]`;
     }
-    return obj.map((item, i) => `${spaces}- ${toToon(item, indent + 1).trimStart()}`).join('\n');
+    return obj.map((item) => `${spaces}- ${toToon(item, indent + 1).trimStart()}`).join('\n');
   }
   
   if (typeof obj === 'object') {
-    const entries = Object.entries(obj).filter(([_, v]) => v !== null && v !== undefined);
+    const entries = Object.entries(obj).filter(([_, v]) => v !== undefined);
     if (entries.length === 0) return '{}';
     return entries
       .map(([key, value]) => {

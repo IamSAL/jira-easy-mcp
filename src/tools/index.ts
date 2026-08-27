@@ -25,4 +25,4 @@ export { getSprintsFromBoard, getSprintIssues, createSprint, updateSprint } from
 export { getWorklogs, addWorklog, deleteWorklog } from './worklogs.js';
 export { getIssueLinkTypes, createIssueLink, deleteIssueLink, createRemoteLink } from './links.js';
 export { getCurrentUser, getUser, searchUsers, getAssignableUsers } from './users.js';
-export { getAllFields, getCreateMeta, getProjectIssueTypes } from './fields.js';
+export { getAllFields, getCreateMeta, getProjectIssueTypes, getEditMeta } from './fields.js';

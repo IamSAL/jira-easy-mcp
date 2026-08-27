@@ -8,8 +8,17 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 import { jiraGet } from '../client.js';
 import { formatResponse } from '../config.js';
+import { isCustomFieldId } from '../custom-fields.js';
 import { startToolCall, endToolCall, failToolCall } from '../logger.js';
-import type { JiraField, JiraIssueType } from '../types.js';
+import { toSimplifiedCreateMeta, toSimplifiedEditMeta } from '../transformers.js';
+import type {
+  JiraField,
+  JiraIssueType,
+  JiraEditMeta,
+  JiraCreateMeta,
+  SimplifiedEditMeta,
+  SimplifiedCreateMeta,
+} from '../types.js';
 
 /**
  * Get all fields (system + custom).
@@ -19,12 +28,31 @@ export const getAllFields = async (): Promise<JiraField[]> => {
 };
 
 /**
- * Get create meta for a project (fields required/available when creating issues).
+ * Field catalog for jira_get_fields. customOnly keeps customfield_<digits> entries.
+ */
+export const listFields = async (customOnly: boolean = false): Promise<JiraField[]> => {
+  const fields = await getAllFields();
+  return customOnly ? fields.filter(field => isCustomFieldId(field.id)) : fields;
+};
+
+/**
+ * Editable fields for an issue (GET /issue/{key}/editmeta). Jira Server 7.12.
+ */
+export const getEditMeta = async (
+  issueKey: string,
+  customOnly: boolean = false
+): Promise<SimplifiedEditMeta> => {
+  const meta = await jiraGet<JiraEditMeta>(`/issue/${issueKey}/editmeta`);
+  return toSimplifiedEditMeta(issueKey, meta.fields, customOnly);
+};
+
+/**
+ * Create-screen fields for a project (GET /issue/createmeta). Jira Server 7.12.
  */
 export const getCreateMeta = async (
   projectKey: string,
   issueTypeNames?: string[]
-): Promise<unknown> => {
+): Promise<SimplifiedCreateMeta> => {
   const params = new URLSearchParams({
     projectKeys: projectKey,
     expand: 'projects.issuetypes.fields',
@@ -34,7 +62,8 @@ export const getCreateMeta = async (
     params.set('issuetypeNames', issueTypeNames.join(','));
   }
 
-  return jiraGet(`/issue/createmeta?${params}`);
+  const raw = await jiraGet<JiraCreateMeta>(`/issue/createmeta?${params}`);
+  return toSimplifiedCreateMeta(projectKey, raw);
 };
 
 /**
@@ -58,18 +87,15 @@ export const registerFieldTools = (server: McpServer): void => {
   // Get all fields
   server.tool(
     'jira_get_fields',
-    'List all Jira fields (both system fields like Summary, Status, Priority and custom fields). Returns field IDs, names, and whether they\'re searchable in JQL. Essential for understanding what fields can be used in JQL queries or when updating issues with custom fields.',
+    'List the Jira instance field catalog (system fields like Summary plus every custom field). Returns field IDs, names, clauseNames for JQL, and whether they\'re searchable. Use this to look up a JQL clause name. For fields on an issue type, use jira_get_edit_meta or jira_get_create_meta instead — do not call this before every create/update.',
     {
-      customOnly: z.boolean().default(false).describe('Set to true to only return custom fields, filtering out standard Jira fields'),
+      customOnly: z.boolean().default(false).describe('Set to true to only return fields whose id is customfield_<digits>'),
     },
     async (args) => {
       const callLog = startToolCall('jira_get_fields', args);
       try {
-        const fields = await getAllFields();
-        const filtered = args.customOnly ? fields.filter(f => f.custom) : fields;
-        
-        // Simplify the response
-        const simplified = filtered.map(f => ({
+        const fields = await listFields(args.customOnly);
+        const simplified = fields.map(f => ({
           id: f.id,
           name: f.name,
           custom: f.custom,
@@ -92,7 +118,7 @@ export const registerFieldTools = (server: McpServer): void => {
   // Get create meta
   server.tool(
     'jira_get_create_meta',
-    'Get metadata about fields required and available when creating issues in a project. Shows which fields are mandatory, their allowed values, and field types. Call this before jira_create_issue to understand what data is needed for each issue type.',
+    'Get metadata about fields required and available when creating issues in a project. Returns simplified field rows (id, type, operations, allowedValues) per issue type — the same shape as jira_get_edit_meta. Call this before jira_create_issue to understand what data is needed for each issue type.',
     {
       projectKey: z.string().describe('Project key to get create metadata for (e.g., KP)'),
       issueTypes: z.array(z.string()).optional().describe('Optional: limit results to specific issue types (e.g., ["Bug", "Task"])'),
@@ -135,6 +161,29 @@ export const registerFieldTools = (server: McpServer): void => {
         endToolCall(callLog, simplified);
         return {
           content: [{ type: 'text', text: formatResponse(simplified) }],
+        };
+      } catch (err) {
+        failToolCall(callLog, err);
+        throw err;
+      }
+    }
+  );
+
+  // Get edit meta for an issue
+  server.tool(
+    'jira_get_edit_meta',
+    'Get which fields can be edited on a specific issue, including schema type, operations, and allowedValues. This is GET /rest/api/2/issue/{key}/editmeta (Jira Server 7.12). Call this before writing custom fields so you know the REST value shape (string, number, {value}, {name} for Server users, arrays) and whether the field is on the edit screen. A field listed by jira_get_fields but missing here cannot be updated on that issue.',
+    {
+      issueKey: z.string().describe('Issue key to get edit metadata for (e.g., KP-123)'),
+      customOnly: z.boolean().default(false).describe('Set to true to only return fields whose id is customfield_<digits>'),
+    },
+    async (args) => {
+      const callLog = startToolCall('jira_get_edit_meta', args);
+      try {
+        const meta = await getEditMeta(args.issueKey, args.customOnly);
+        endToolCall(callLog, meta);
+        return {
+          content: [{ type: 'text', text: formatResponse(meta) }],
         };
       } catch (err) {
         failToolCall(callLog, err);

@@ -157,7 +157,7 @@ export const registerSprintTools = (server: McpServer): void => {
     'Get all issues assigned to a specific sprint. Use this to see what work is planned or in progress for a sprint. Get sprint IDs from jira_get_sprints. Can add JQL filter for additional narrowing.',
     {
       sprintId: z.number().describe('Sprint ID (get from jira_get_sprints)'),
-      jql: z.string().optional().describe('Additional JQL filter (e.g., "status = \"In Progress\"", "assignee = currentUser()")'),
+      jql: z.string().optional().describe('Additional JQL filter (e.g. status = "In Progress", assignee = currentUser())'),
       startAt: z.number().min(0).default(0).describe('Starting index for pagination'),
       maxResults: z.number().min(1).max(100).default(50).describe('Maximum number of results'),
     },

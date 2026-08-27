@@ -4,34 +4,77 @@
  * Functions to transform Jira API responses to simplified formats.
  */
 
+import { isCustomFieldId } from './custom-fields.js';
 import type {
   JiraIssue,
+  JiraIssueFields,
   JiraSearchResult,
   JiraTransition,
   JiraProject,
   JiraBoard,
   JiraSprint,
+  JiraEditMetaField,
+  JiraCreateMeta,
+  SimplifiedCustomField,
   SimplifiedIssue,
   SimplifiedSearchResult,
   SimplifiedTransition,
   SimplifiedProject,
   SimplifiedBoard,
   SimplifiedSprint,
+  SimplifiedAllowedValue,
+  SimplifiedEditMetaField,
+  SimplifiedEditMeta,
+  SimplifiedCreateMeta,
 } from './types.js';
+
+export interface SimplifyIssueOptions {
+  /** When true, keep custom fields whose value is null (cleared / empty). Default omits them. */
+  includeNullCustomFields?: boolean;
+  /** Field-id → display name. Issue `expand=names` or search-result names. */
+  names?: Record<string, string>;
+  /** When set, only these custom field ids are returned (narrow get/search). */
+  customFieldIds?: string[];
+}
+
+export const toSimplifiedCustomFields = (
+  fields: JiraIssueFields,
+  options: SimplifyIssueOptions = {}
+): SimplifiedCustomField[] => {
+  const names = options.names;
+  const includeNulls = options.includeNullCustomFields === true;
+  const onlyIds = options.customFieldIds ? new Set(options.customFieldIds) : undefined;
+
+  const rows: SimplifiedCustomField[] = [];
+  for (const [key, value] of Object.entries(fields)) {
+    if (!isCustomFieldId(key) || value === undefined) {
+      continue;
+    }
+    if (onlyIds && !onlyIds.has(key)) {
+      continue;
+    }
+    if (value === null && !includeNulls) {
+      continue;
+    }
+    const name = names?.[key];
+    rows.push(name !== undefined ? { id: key, name, value } : { id: key, value });
+  }
+  return rows;
+};
 
 /**
  * Transform a Jira issue to simplified format.
  */
-export const toSimplifiedIssue = (issue: JiraIssue): SimplifiedIssue => {
+export const toSimplifiedIssue = (
+  issue: JiraIssue,
+  options: SimplifyIssueOptions = {}
+): SimplifiedIssue => {
   const { fields } = issue;
-
-  // Extract custom fields (fields starting with customfield_)
-  const customFields: Record<string, unknown> = {};
-  for (const [key, value] of Object.entries(fields)) {
-    if (key.startsWith('customfield_') && value !== null && value !== undefined) {
-      customFields[key] = value;
-    }
-  }
+  const customFields = toSimplifiedCustomFields(fields, {
+    includeNullCustomFields: options.includeNullCustomFields,
+    names: options.names ?? issue.names,
+    customFieldIds: options.customFieldIds,
+  });
 
   // Transform links
   const links = fields.issuelinks?.map(link => {
@@ -132,12 +175,18 @@ export const toSimplifiedIssue = (issue: JiraIssue): SimplifiedIssue => {
 /**
  * Transform Jira search result to simplified format.
  */
-export const toSimplifiedSearchResult = (result: JiraSearchResult): SimplifiedSearchResult => {
+export const toSimplifiedSearchResult = (
+  result: JiraSearchResult,
+  options: SimplifyIssueOptions = {}
+): SimplifiedSearchResult => {
   return {
     total: result.total,
     startAt: result.startAt,
     maxResults: result.maxResults,
-    issues: result.issues.map(toSimplifiedIssue),
+    issues: result.issues.map(issue => toSimplifiedIssue(issue, {
+      ...options,
+      names: options.names ?? issue.names ?? result.names,
+    })),
   };
 };
 
@@ -200,5 +249,112 @@ export const toSimplifiedSprint = (sprint: JiraSprint): SimplifiedSprint => {
     endDate: sprint.endDate,
     completeDate: sprint.completeDate,
     goal: sprint.goal,
+  };
+};
+
+const simplifyAllowedValue = (value: unknown): SimplifiedAllowedValue | undefined => {
+  if (value === null || value === undefined) {
+    return undefined;
+  }
+  if (typeof value !== 'object' || Array.isArray(value)) {
+    return typeof value === 'string' || typeof value === 'number'
+      ? { value: String(value) }
+      : undefined;
+  }
+
+  const raw = value as Record<string, unknown>;
+  const simplified: SimplifiedAllowedValue = {};
+
+  if (typeof raw.id === 'string' || typeof raw.id === 'number') {
+    simplified.id = String(raw.id);
+  }
+  if (typeof raw.value === 'string') {
+    simplified.value = raw.value;
+  }
+  if (typeof raw.name === 'string') {
+    simplified.name = raw.name;
+  }
+  if (typeof raw.disabled === 'boolean') {
+    simplified.disabled = raw.disabled;
+  }
+  if (Array.isArray(raw.children)) {
+    const children = raw.children
+      .map(simplifyAllowedValue)
+      .filter((child): child is SimplifiedAllowedValue => child !== undefined);
+    if (children.length > 0) {
+      simplified.children = children;
+    }
+  }
+
+  return Object.keys(simplified).length > 0 ? simplified : undefined;
+};
+
+/**
+ * One field row from editmeta or createmeta.
+ */
+export const toSimplifiedMetaField = (
+  id: string,
+  field: JiraEditMetaField
+): SimplifiedEditMetaField => {
+  const allowedValues = field.allowedValues
+    ?.map(simplifyAllowedValue)
+    .filter((v): v is SimplifiedAllowedValue => v !== undefined);
+
+  const simplified: SimplifiedEditMetaField = {
+    id,
+    name: field.name,
+    required: field.required,
+    type: field.schema?.type,
+    customType: field.schema?.custom,
+    operations: field.operations || [],
+  };
+
+  if (field.schema?.items) {
+    simplified.itemsType = field.schema.items;
+  }
+
+  if (allowedValues && allowedValues.length > 0) {
+    simplified.allowedValues = allowedValues;
+  }
+
+  return simplified;
+};
+
+const toSimplifiedMetaFields = (
+  fields: Record<string, JiraEditMetaField> | undefined,
+  customOnly: boolean = false
+): SimplifiedEditMetaField[] =>
+  Object.entries(fields || {})
+    .filter(([id]) => !customOnly || isCustomFieldId(id))
+    .map(([id, field]) => toSimplifiedMetaField(id, field));
+
+export const toSimplifiedEditMeta = (
+  issueKey: string,
+  fields: Record<string, JiraEditMetaField> | undefined,
+  customOnly: boolean = false
+): SimplifiedEditMeta => ({
+  issueKey,
+  fields: toSimplifiedMetaFields(fields, customOnly),
+});
+
+/**
+ * Flatten GET /issue/createmeta (projects.issuetypes.fields) to the same field rows as editmeta.
+ */
+export const toSimplifiedCreateMeta = (
+  projectKey: string,
+  raw: JiraCreateMeta
+): SimplifiedCreateMeta => {
+  const projectKeyUpper = projectKey.toUpperCase();
+  const project = raw.projects?.find(p => p.key?.toUpperCase() === projectKeyUpper)
+    ?? raw.projects?.[0];
+
+  return {
+    projectKey,
+    issueTypes: (project?.issuetypes || []).map(issueType => ({
+      id: issueType.id,
+      name: issueType.name,
+      subtask: Boolean(issueType.subtask),
+      fields: toSimplifiedMetaFields(issueType.fields),
+    })),
   };
 };
