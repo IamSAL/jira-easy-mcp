@@ -1,4 +1,4 @@
-name: Publish to npm
+name: Publish to npm and MCP Registry
 
 # Publishes when a GitHub Release is published (tag vX.Y.Z matching package.json).
 # Uses npm trusted publishing (OIDC): no NPM_TOKEN secret is stored. The package
@@ -29,6 +29,9 @@ jobs:
           if [ "$version" != "$GITHUB_REF_NAME" ]; then
             echo "Release tag $GITHUB_REF_NAME does not match package.json $version"; exit 1
           fi
+          for v in "v$(node -p "require('./server.json').version")" "v$(node -p "require('./server.json').packages[0].version")"; do
+            if [ "$v" != "$version" ]; then echo "server.json version $v does not match package.json $version"; exit 1; fi
+          done
       - run: pnpm run lint
       - run: pnpm test
       - name: MCP stdio smoke test
@@ -44,3 +47,10 @@ jobs:
           npm publish --dry-run --provenance=false 2>&1 | tee publish-check.log
           if grep -q "invalid and removed" publish-check.log; then exit 1; fi
       - run: npm publish --provenance --access public
+      # Official MCP Registry (registry.modelcontextprotocol.io), from server.json.
+      # GitHub OIDC proves ownership of the io.github.IamSAL namespace.
+      - name: Publish to MCP Registry
+        run: |
+          curl -sSfL https://github.com/modelcontextprotocol/registry/releases/download/v1.8.1/mcp-publisher_linux_amd64.tar.gz | tar xz mcp-publisher
+          ./mcp-publisher login github-oidc
+          ./mcp-publisher publish
