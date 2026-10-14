@@ -9,8 +9,18 @@ import { z } from 'zod';
 import { zBoolean } from './schema.js';
 import { jiraGet, JiraApiException, pathSegment } from '../client.js';
 import { formatResponse } from '../config.js';
+import { isCustomFieldId } from '../custom-fields.js';
 import { startToolCall, endToolCall, failToolCall } from '../logger.js';
-import type { JiraField, JiraIssueType } from '../types.js';
+import { toSimplifiedCreateMeta, toSimplifiedEditMeta } from '../transformers.js';
+import type {
+  JiraField,
+  JiraIssueType,
+  JiraEditMeta,
+  JiraEditMetaField,
+  JiraCreateMeta,
+  SimplifiedEditMeta,
+  SimplifiedCreateMeta,
+} from '../types.js';
 
 /**
  * Get all fields (system + custom).
@@ -19,39 +29,12 @@ export const getAllFields = async (): Promise<JiraField[]> => {
   return jiraGet<JiraField[]>('/field');
 };
 
-interface CreateMetaField {
-  fieldId?: string;
-  key?: string;
-  name: string;
-  required: boolean;
-  schema?: { type?: string; items?: string; custom?: string };
-  allowedValues?: Array<{ id?: string; name?: string; value?: string; key?: string }>;
-}
-
-interface LegacyCreateMeta {
-  projects: Array<{
-    issuetypes: Array<JiraIssueType & { fields?: Record<string, CreateMetaField> }>;
-  }>;
-}
+/** A createmeta field; Jira 8.4+ per-issuetype endpoint rows also carry `fieldId`. */
+type CreateMetaField = JiraEditMetaField & { fieldId?: string; key?: string };
 
 interface PagedValues<T> {
   values: T[];
   isLast?: boolean;
-  total?: number;
-}
-
-export interface SimplifiedCreateMeta {
-  issueType: string;
-  issueTypeId: string;
-  subtask: boolean;
-  fields: Array<{
-    id: string;
-    name: string;
-    required: boolean;
-    type?: string;
-    customType?: string;
-    allowedValues?: string[];
-  }>;
 }
 
 /**
@@ -76,32 +59,39 @@ const isNotFound = (err: unknown): boolean => err instanceof JiraApiException &&
 const shouldUseLegacy = (err: unknown): boolean =>
   err instanceof JiraApiException && (err.status === 404 || err.status === 400);
 
-const simplifyField = (id: string, field: CreateMetaField): SimplifiedCreateMeta['fields'][number] => ({
-  id,
-  name: field.name,
-  required: field.required,
-  type: field.schema?.type === 'array' ? `array<${field.schema.items}>` : field.schema?.type,
-  customType: field.schema?.custom?.split(':').pop(),
-  allowedValues: field.allowedValues
-    ?.map(v => v.name ?? v.value ?? v.key ?? v.id)
-    .filter((v): v is string => v !== undefined)
-    .slice(0, 50),
-});
-
 /**
  * Legacy GET /issue/createmeta (Jira < 8.4). On Jira 9+ it no longer exists,
  * so reaching it there means the per-project endpoint 404'd: unknown project.
  */
-const getLegacyCreateMeta = async (projectKey: string, params: URLSearchParams): Promise<LegacyCreateMeta['projects'][number]> => {
+const getLegacyCreateMeta = async (projectKey: string, params: URLSearchParams): Promise<JiraCreateMeta> => {
   const notFound = () => new Error(`Project ${projectKey} not found or you cannot create issues in it.`);
-  let meta: LegacyCreateMeta;
+  let meta: JiraCreateMeta;
   try {
-    meta = await jiraGet<LegacyCreateMeta>(`/issue/createmeta?${params}`);
+    meta = await jiraGet<JiraCreateMeta>(`/issue/createmeta?${params}`);
   } catch (err) {
     throw isNotFound(err) ? notFound() : err;
   }
-  if (meta.projects.length === 0) throw notFound();
-  return meta.projects[0];
+  if (!meta.projects?.length) throw notFound();
+  return meta;
+};
+
+/**
+ * Field catalog for jira_get_fields. customOnly keeps customfield_<digits> entries.
+ */
+export const listFields = async (customOnly: boolean = false): Promise<JiraField[]> => {
+  const fields = await getAllFields();
+  return customOnly ? fields.filter(field => isCustomFieldId(field.id)) : fields;
+};
+
+/**
+ * Editable fields for an issue (GET /issue/{key}/editmeta, every Jira version).
+ */
+export const getEditMeta = async (
+  issueKey: string,
+  customOnly: boolean = false
+): Promise<SimplifiedEditMeta> => {
+  const meta = await jiraGet<JiraEditMeta>(`/issue/${pathSegment(issueKey)}/editmeta`);
+  return toSimplifiedEditMeta(issueKey, meta.fields, customOnly);
 };
 
 /**
@@ -115,16 +105,16 @@ export const getProjectIssueTypes = async (projectKey: string): Promise<JiraIssu
     if (!shouldUseLegacy(err)) throw err;
   }
   const legacy = await getLegacyCreateMeta(projectKey, new URLSearchParams({ projectKeys: projectKey.trim() }));
-  return legacy.issuetypes;
+  return (legacy.projects?.[0]?.issuetypes ?? []) as JiraIssueType[];
 };
 
 /**
- * Get create meta for a project (fields required/available when creating issues).
+ * Create-screen fields for a project, as the same field rows as jira_get_edit_meta.
  */
 export const getCreateMeta = async (
   projectKey: string,
   issueTypeNames?: string[]
-): Promise<SimplifiedCreateMeta[]> => {
+): Promise<SimplifiedCreateMeta> => {
   const project = pathSegment(projectKey);
   const wanted = issueTypeNames?.map(name => name.toLowerCase());
   const matches = (name: string) => !wanted?.length || wanted.includes(name.toLowerCase());
@@ -132,31 +122,24 @@ export const getCreateMeta = async (
   try {
     const issueTypes = await getAllPages<JiraIssueType>(`/issue/createmeta/${project}/issuetypes`);
     const selected = issueTypes.filter(issueType => matches(issueType.name));
-    return await Promise.all(selected.map(async issueType => {
-      const fields = await getAllPages<CreateMetaField>(
+    const issuetypes = await Promise.all(selected.map(async issueType => {
+      const rows = await getAllPages<CreateMetaField>(
         `/issue/createmeta/${project}/issuetypes/${issueType.id}`
       );
-      return {
-        issueType: issueType.name,
-        issueTypeId: issueType.id,
-        subtask: issueType.subtask,
-        fields: fields.map(field => simplifyField(field.fieldId ?? field.key ?? field.name, field)),
-      };
+      const fields = Object.fromEntries(rows.map(row => [row.fieldId ?? row.key ?? row.name, row]));
+      return { id: issueType.id, name: issueType.name, subtask: issueType.subtask, fields };
     }));
+    return toSimplifiedCreateMeta(projectKey, { projects: [{ key: projectKey.trim(), issuetypes }] });
   } catch (err) {
     if (!shouldUseLegacy(err)) throw err;
   }
 
   const params = new URLSearchParams({ projectKeys: projectKey.trim(), expand: 'projects.issuetypes.fields' });
   const legacy = await getLegacyCreateMeta(projectKey, params);
-  return legacy.issuetypes
-    .filter(issueType => matches(issueType.name))
-    .map(issueType => ({
-      issueType: issueType.name,
-      issueTypeId: issueType.id,
-      subtask: issueType.subtask,
-      fields: Object.entries(issueType.fields || {}).map(([id, field]) => simplifyField(id, field)),
-    }));
+  const raw: JiraCreateMeta = {
+    projects: legacy.projects?.map(p => ({ ...p, issuetypes: p.issuetypes?.filter(t => matches(t.name)) })),
+  };
+  return toSimplifiedCreateMeta(projectKey, raw);
 };
 
 /**
@@ -166,18 +149,15 @@ export const registerFieldTools = (server: McpServer): void => {
   // Get all fields
   server.tool(
     'jira_get_fields',
-    'List all Jira fields (both system fields like Summary, Status, Priority and custom fields). Returns field IDs, names, and whether they\'re searchable in JQL. Essential for understanding what fields can be used in JQL queries or when updating issues with custom fields.',
+    'List the Jira instance field catalog (system fields like Summary plus every custom field). Returns field IDs, names, clauseNames for JQL, and whether they\'re searchable. Use this to look up a JQL clause name. For fields on an issue type, use jira_get_edit_meta or jira_get_create_meta instead — do not call this before every create/update.',
     {
-      customOnly: zBoolean().default(false).describe('Set to true to only return custom fields, filtering out standard Jira fields'),
+      customOnly: zBoolean().default(false).describe('Set to true to only return fields whose id is customfield_<digits>'),
     },
     async (args) => {
       const callLog = startToolCall('jira_get_fields', args);
       try {
-        const fields = await getAllFields();
-        const filtered = args.customOnly ? fields.filter(f => f.custom) : fields;
-        
-        // Simplify the response
-        const simplified = filtered.map(f => ({
+        const fields = await listFields(args.customOnly);
+        const simplified = fields.map(f => ({
           id: f.id,
           name: f.name,
           custom: f.custom,
@@ -200,7 +180,7 @@ export const registerFieldTools = (server: McpServer): void => {
   // Get create meta
   server.tool(
     'jira_get_create_meta',
-    'Get metadata about fields required and available when creating issues in a project. Shows which fields are mandatory, their allowed values, and field types. Call this before jira_create_issue to understand what data is needed for each issue type.',
+    'Get metadata about fields required and available when creating issues in a project. Returns simplified field rows (id, type, operations, allowedValues) per issue type — the same shape as jira_get_edit_meta. Call this before jira_create_issue to understand what data is needed for each issue type.',
     {
       projectKey: z.string().describe('Project key to get create metadata for (e.g., KP)'),
       issueTypes: z.array(z.string()).optional().describe('Optional: limit results to specific issue types (e.g., ["Bug", "Task"])'),
@@ -243,6 +223,29 @@ export const registerFieldTools = (server: McpServer): void => {
         endToolCall(callLog, simplified);
         return {
           content: [{ type: 'text', text: formatResponse(simplified) }],
+        };
+      } catch (err) {
+        failToolCall(callLog, err);
+        throw err;
+      }
+    }
+  );
+
+  // Get edit meta for an issue
+  server.tool(
+    'jira_get_edit_meta',
+    'Get which fields can be edited on a specific issue, including schema type, operations, and allowedValues. This is GET /rest/api/2/issue/{key}/editmeta. Call this before writing custom fields so you know the REST value shape (string, number, {value}, {name} for Server users, arrays) and whether the field is on the edit screen. A field listed by jira_get_fields but missing here cannot be updated on that issue.',
+    {
+      issueKey: z.string().describe('Issue key to get edit metadata for (e.g., KP-123)'),
+      customOnly: zBoolean().default(false).describe('Set to true to only return fields whose id is customfield_<digits>'),
+    },
+    async (args) => {
+      const callLog = startToolCall('jira_get_edit_meta', args);
+      try {
+        const meta = await getEditMeta(args.issueKey, args.customOnly);
+        endToolCall(callLog, meta);
+        return {
+          content: [{ type: 'text', text: formatResponse(meta) }],
         };
       } catch (err) {
         failToolCall(callLog, err);

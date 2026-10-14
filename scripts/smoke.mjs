@@ -28,7 +28,7 @@ await client.close();
 const problems = [];
 const { version } = JSON.parse(readFileSync(join(dirname(entry), '..', 'package.json'), 'utf8'));
 if (serverVersion !== version) problems.push(`server reports version ${serverVersion}, package.json has ${version}`);
-if (tools.length < 41) problems.push(`expected >= 41 tools, got ${tools.length}`);
+if (tools.length < 42) problems.push(`expected >= 42 tools, got ${tools.length}`);
 for (const tool of tools) {
   // OpenAI/Codex and Gemini require ^[a-zA-Z0-9_-]{1,64}$
   if (!/^[a-zA-Z0-9_-]{1,64}$/.test(tool.name)) problems.push(`invalid tool name: ${tool.name}`);
