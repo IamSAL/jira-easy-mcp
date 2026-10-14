@@ -6,7 +6,7 @@
 
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
-import { jiraGet, jiraPost, jiraDelete } from '../client.js';
+import { jiraGet, jiraPost, jiraDelete, pathSegment } from '../client.js';
 import { formatResponse } from '../config.js';
 import { startToolCall, endToolCall, failToolCall } from '../logger.js';
 import type { JiraWorklog, CreateWorklogResponse } from '../types.js';
@@ -31,7 +31,7 @@ export const getWorklogs = async (
     maxResults: maxResults.toString(),
   });
 
-  return jiraGet<WorklogsResult>(`/issue/${issueKey}/worklog?${params}`);
+  return jiraGet<WorklogsResult>(`/issue/${pathSegment(issueKey)}/worklog?${params}`);
 };
 
 /**
@@ -68,7 +68,7 @@ export const addWorklog = async (
   }
 
   const queryString = params.toString();
-  const endpoint = `/issue/${issueKey}/worklog${queryString ? `?${queryString}` : ''}`;
+  const endpoint = `/issue/${pathSegment(issueKey)}/worklog${queryString ? `?${queryString}` : ''}`;
 
   return jiraPost<CreateWorklogResponse>(endpoint, body);
 };
@@ -95,7 +95,7 @@ export const deleteWorklog = async (
   }
 
   const queryString = params.toString();
-  const endpoint = `/issue/${issueKey}/worklog/${worklogId}${queryString ? `?${queryString}` : ''}`;
+  const endpoint = `/issue/${pathSegment(issueKey)}/worklog/${pathSegment(worklogId)}${queryString ? `?${queryString}` : ''}`;
 
   await jiraDelete(endpoint);
 };
@@ -110,8 +110,8 @@ export const registerWorklogTools = (server: McpServer): void => {
     'Retrieve all time tracking entries (worklogs) for a Jira issue. Shows who logged time, how much, when, and optional work descriptions. Useful for time reporting, billing, or understanding effort spent on an issue.',
     {
       issueKey: z.string().describe('Issue key to get time entries for (e.g., KP-123)'),
-      startAt: z.number().min(0).default(0).describe('Starting index for pagination'),
-      maxResults: z.number().min(1).max(100).default(50).describe('Maximum number of worklogs to return'),
+      startAt: z.coerce.number().min(0).default(0).describe('Starting index for pagination'),
+      maxResults: z.coerce.number().min(1).max(100).default(50).describe('Maximum number of worklogs to return'),
     },
     async (args) => {
       const callLog = startToolCall('jira_get_worklogs', args);

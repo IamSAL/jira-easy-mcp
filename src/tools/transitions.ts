@@ -6,7 +6,7 @@
 
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
-import { jiraGet, jiraPost } from '../client.js';
+import { jiraGet, jiraPost, pathSegment } from '../client.js';
 import { formatResponse } from '../config.js';
 import { startToolCall, endToolCall, failToolCall } from '../logger.js';
 import { toSimplifiedTransition } from '../transformers.js';
@@ -16,7 +16,7 @@ import type { JiraTransitionsResult, SimplifiedTransition } from '../types.js';
  * Get available transitions for an issue.
  */
 export const getTransitions = async (issueKey: string): Promise<SimplifiedTransition[]> => {
-  const result = await jiraGet<JiraTransitionsResult>(`/issue/${issueKey}/transitions?expand=transitions.fields`);
+  const result = await jiraGet<JiraTransitionsResult>(`/issue/${pathSegment(issueKey)}/transitions?expand=transitions.fields`);
   return result.transitions.map(toSimplifiedTransition);
 };
 
@@ -43,7 +43,7 @@ export const transitionIssue = async (
     body.fields = fields;
   }
 
-  await jiraPost(`/issue/${issueKey}/transitions`, body);
+  await jiraPost(`/issue/${pathSegment(issueKey)}/transitions`, body);
 };
 
 /**

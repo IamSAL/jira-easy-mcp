@@ -128,8 +128,8 @@ export const registerUserTools = (server: McpServer): void => {
     'Search for Jira users by name, username, or email. Use this to find usernames for assigning issues or filtering by assignee. Returns matching users with their display names and usernames.',
     {
       query: z.string().describe('Search text - matches against username, display name, and email'),
-      startAt: z.number().min(0).default(0).describe('Starting index for pagination'),
-      maxResults: z.number().min(1).max(100).default(50).describe('Maximum number of results'),
+      startAt: z.coerce.number().min(0).default(0).describe('Starting index for pagination'),
+      maxResults: z.coerce.number().min(1).max(100).default(50).describe('Maximum number of results'),
     },
     async (args) => {
       const callLog = startToolCall('jira_search_users', args);
@@ -154,8 +154,8 @@ export const registerUserTools = (server: McpServer): void => {
     {
       projectKey: z.string().describe('Project key to check assignable users for (e.g., KP)'),
       query: z.string().optional().describe('Optional filter to narrow results by name/username'),
-      startAt: z.number().min(0).default(0).describe('Starting index for pagination'),
-      maxResults: z.number().min(1).max(100).default(50).describe('Maximum number of results'),
+      startAt: z.coerce.number().min(0).default(0).describe('Starting index for pagination'),
+      maxResults: z.coerce.number().min(1).max(100).default(50).describe('Maximum number of results'),
     },
     async (args) => {
       const callLog = startToolCall('jira_get_assignable_users', args);

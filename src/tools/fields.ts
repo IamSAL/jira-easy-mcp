@@ -6,7 +6,8 @@
 
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
-import { jiraGet } from '../client.js';
+import { zBoolean } from './schema.js';
+import { jiraGet, JiraApiException, pathSegment } from '../client.js';
 import { formatResponse } from '../config.js';
 import { startToolCall, endToolCall, failToolCall } from '../logger.js';
 import type { JiraField, JiraIssueType } from '../types.js';
@@ -18,37 +19,144 @@ export const getAllFields = async (): Promise<JiraField[]> => {
   return jiraGet<JiraField[]>('/field');
 };
 
+interface CreateMetaField {
+  fieldId?: string;
+  key?: string;
+  name: string;
+  required: boolean;
+  schema?: { type?: string; items?: string; custom?: string };
+  allowedValues?: Array<{ id?: string; name?: string; value?: string; key?: string }>;
+}
+
+interface LegacyCreateMeta {
+  projects: Array<{
+    issuetypes: Array<JiraIssueType & { fields?: Record<string, CreateMetaField> }>;
+  }>;
+}
+
+interface PagedValues<T> {
+  values: T[];
+  isLast?: boolean;
+  total?: number;
+}
+
+export interface SimplifiedCreateMeta {
+  issueType: string;
+  issueTypeId: string;
+  subtask: boolean;
+  fields: Array<{
+    id: string;
+    name: string;
+    required: boolean;
+    type?: string;
+    customType?: string;
+    allowedValues?: string[];
+  }>;
+}
+
 /**
- * Get create meta for a project (fields required/available when creating issues).
+ * Fetch every page of a createmeta endpoint (Jira 8.4+ pages at 50 items).
  */
-export const getCreateMeta = async (
-  projectKey: string,
-  issueTypeNames?: string[]
-): Promise<unknown> => {
-  const params = new URLSearchParams({
-    projectKeys: projectKey,
-    expand: 'projects.issuetypes.fields',
-  });
-
-  if (issueTypeNames && issueTypeNames.length > 0) {
-    params.set('issuetypeNames', issueTypeNames.join(','));
+const getAllPages = async <T>(endpoint: string): Promise<T[]> => {
+  const values: T[] = [];
+  for (let startAt = 0; ; ) {
+    const page = await jiraGet<PagedValues<T>>(`${endpoint}?startAt=${startAt}&maxResults=100`);
+    values.push(...page.values);
+    startAt += page.values.length;
+    if (page.isLast !== false || page.values.length === 0) return values;
   }
+};
 
-  return jiraGet(`/issue/createmeta?${params}`);
+/**
+ * Jira 9+ removed GET /issue/createmeta?projectKeys=...; the per-project
+ * endpoints exist since Jira 8.4. Try them first and fall back to the old one (Jira 7.x - 8.3).
+ */
+const isNotFound = (err: unknown): boolean => err instanceof JiraApiException && err.status === 404;
+// Jira 8.x answers the per-project endpoint with 400 for an unknown project
+const shouldUseLegacy = (err: unknown): boolean =>
+  err instanceof JiraApiException && (err.status === 404 || err.status === 400);
+
+const simplifyField = (id: string, field: CreateMetaField): SimplifiedCreateMeta['fields'][number] => ({
+  id,
+  name: field.name,
+  required: field.required,
+  type: field.schema?.type === 'array' ? `array<${field.schema.items}>` : field.schema?.type,
+  customType: field.schema?.custom?.split(':').pop(),
+  allowedValues: field.allowedValues
+    ?.map(v => v.name ?? v.value ?? v.key ?? v.id)
+    .filter((v): v is string => v !== undefined)
+    .slice(0, 50),
+});
+
+/**
+ * Legacy GET /issue/createmeta (Jira < 8.4). On Jira 9+ it no longer exists,
+ * so reaching it there means the per-project endpoint 404'd: unknown project.
+ */
+const getLegacyCreateMeta = async (projectKey: string, params: URLSearchParams): Promise<LegacyCreateMeta['projects'][number]> => {
+  const notFound = () => new Error(`Project ${projectKey} not found or you cannot create issues in it.`);
+  let meta: LegacyCreateMeta;
+  try {
+    meta = await jiraGet<LegacyCreateMeta>(`/issue/createmeta?${params}`);
+  } catch (err) {
+    throw isNotFound(err) ? notFound() : err;
+  }
+  if (meta.projects.length === 0) throw notFound();
+  return meta.projects[0];
 };
 
 /**
  * Get issue types for a project.
  */
 export const getProjectIssueTypes = async (projectKey: string): Promise<JiraIssueType[]> => {
-  interface ProjectMeta {
-    projects: Array<{
-      issuetypes: JiraIssueType[];
-    }>;
+  const project = pathSegment(projectKey);
+  try {
+    return await getAllPages<JiraIssueType>(`/issue/createmeta/${project}/issuetypes`);
+  } catch (err) {
+    if (!shouldUseLegacy(err)) throw err;
   }
-  
-  const meta = await jiraGet<ProjectMeta>(`/issue/createmeta?projectKeys=${projectKey}`);
-  return meta.projects[0]?.issuetypes || [];
+  const legacy = await getLegacyCreateMeta(projectKey, new URLSearchParams({ projectKeys: projectKey.trim() }));
+  return legacy.issuetypes;
+};
+
+/**
+ * Get create meta for a project (fields required/available when creating issues).
+ */
+export const getCreateMeta = async (
+  projectKey: string,
+  issueTypeNames?: string[]
+): Promise<SimplifiedCreateMeta[]> => {
+  const project = pathSegment(projectKey);
+  const wanted = issueTypeNames?.map(name => name.toLowerCase());
+  const matches = (name: string) => !wanted?.length || wanted.includes(name.toLowerCase());
+
+  try {
+    const issueTypes = await getAllPages<JiraIssueType>(`/issue/createmeta/${project}/issuetypes`);
+    const selected = issueTypes.filter(issueType => matches(issueType.name));
+    return await Promise.all(selected.map(async issueType => {
+      const fields = await getAllPages<CreateMetaField>(
+        `/issue/createmeta/${project}/issuetypes/${issueType.id}`
+      );
+      return {
+        issueType: issueType.name,
+        issueTypeId: issueType.id,
+        subtask: issueType.subtask,
+        fields: fields.map(field => simplifyField(field.fieldId ?? field.key ?? field.name, field)),
+      };
+    }));
+  } catch (err) {
+    if (!shouldUseLegacy(err)) throw err;
+  }
+
+  const params = new URLSearchParams({ projectKeys: projectKey.trim(), expand: 'projects.issuetypes.fields' });
+  const legacy = await getLegacyCreateMeta(projectKey, params);
+  return legacy.issuetypes
+    .filter(issueType => matches(issueType.name))
+    .map(issueType => ({
+      issueType: issueType.name,
+      issueTypeId: issueType.id,
+      subtask: issueType.subtask,
+      fields: Object.entries(issueType.fields || {}).map(([id, field]) => simplifyField(id, field)),
+    }));
 };
 
 /**
@@ -60,7 +168,7 @@ export const registerFieldTools = (server: McpServer): void => {
     'jira_get_fields',
     'List all Jira fields (both system fields like Summary, Status, Priority and custom fields). Returns field IDs, names, and whether they\'re searchable in JQL. Essential for understanding what fields can be used in JQL queries or when updating issues with custom fields.',
     {
-      customOnly: z.boolean().default(false).describe('Set to true to only return custom fields, filtering out standard Jira fields'),
+      customOnly: zBoolean().default(false).describe('Set to true to only return custom fields, filtering out standard Jira fields'),
     },
     async (args) => {
       const callLog = startToolCall('jira_get_fields', args);

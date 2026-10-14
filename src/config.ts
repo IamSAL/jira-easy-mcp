@@ -1,13 +1,76 @@
 /**
  * Jira MCP Server - Configuration Module
  * 
- * Handles environment variable loading and configuration management.
+ * Handles environment variable loading, OS credential store fallback,
+ * and configuration management.
  */
 
 import type { JiraConfig, ResponseFormat, LogLevel } from './types.js';
 import { setLogLevel } from './logger.js';
+import { findWindowsCredential, type StoredCredential } from './windows-credentials.js';
+
+/** Service name (macOS Keychain / libsecret) or target name (Windows) for stored credentials. */
+const CREDENTIAL_SERVICE = 'JiraMCP';
 
 let cachedConfig: JiraConfig | null = null;
+let storedCredential: StoredCredential | null = null;
+
+/**
+ * Read credentials for CREDENTIAL_SERVICE from the OS credential store.
+ * keytar is an optional native dependency; if it failed to install, this throws.
+ */
+const findStoredCredentials = async (): Promise<StoredCredential[]> => {
+  if (process.platform === 'win32') {
+    const credential = await findWindowsCredential(CREDENTIAL_SERVICE);
+    return credential ? [credential] : [];
+  }
+  const { default: keytar } = await import('keytar');
+  return keytar.findCredentials(CREDENTIAL_SERVICE);
+};
+
+/**
+ * Resolve credentials before the first getConfig() call.
+ * JIRA_USERNAME + JIRA_PASSWORD take precedence; the OS credential store is
+ * only consulted when they are not both set.
+ */
+export const initializeConfig = async (): Promise<void> => {
+  const { JIRA_USERNAME: envUsername, JIRA_PASSWORD: envPassword } = process.env;
+  if (envUsername && envPassword) {
+    return;
+  }
+
+  let credentials: StoredCredential[];
+  try {
+    credentials = await findStoredCredentials();
+  } catch (err) {
+    throw new Error(
+      `Unable to read the "${CREDENTIAL_SERVICE}" OS credential store (${err instanceof Error ? err.message : String(err)}). Set JIRA_USERNAME and JIRA_PASSWORD instead.`
+    );
+  }
+
+  const matching = envUsername
+    ? credentials.filter(({ account }) => account === envUsername)
+    : credentials;
+
+  if (matching.length > 1) {
+    throw new Error(
+      `Multiple Jira credentials found for service "${CREDENTIAL_SERVICE}". Set JIRA_USERNAME to select an account or remove extra credentials.`
+    );
+  }
+  if (matching.length === 0) {
+    throw new Error(
+      `No Jira credentials found. Set JIRA_USERNAME and JIRA_PASSWORD, or store a credential under "${CREDENTIAL_SERVICE}": on macOS a Keychain item with service "${CREDENTIAL_SERVICE}"; on Windows a Generic Credential (cmdkey /generic:${CREDENTIAL_SERVICE} /user:<username> /pass), since cmdkey /add creates a Domain credential whose password cannot be read.`
+    );
+  }
+
+  storedCredential = matching[0];
+};
+
+/** Read a non-negative integer env var, falling back when unset or invalid (e.g. "3s"). */
+const readInt = (name: string, fallback: number): number => {
+  const value = Number.parseInt(process.env[name] ?? '', 10);
+  return Number.isNaN(value) || value < 0 ? fallback : value;
+};
 
 /**
  * Get Jira configuration from environment variables.
@@ -23,12 +86,12 @@ export const getConfig = (): JiraConfig => {
     throw new Error('Missing JIRA_BASE_URL environment variable');
   }
   
-  const username = process.env.JIRA_USERNAME;
+  const username = storedCredential?.account ?? process.env.JIRA_USERNAME;
   if (!username) {
     throw new Error('Missing JIRA_USERNAME environment variable');
   }
 
-  const password = process.env.JIRA_PASSWORD;
+  const password = storedCredential?.password ?? process.env.JIRA_PASSWORD;
   if (!password) {
     throw new Error('Missing JIRA_PASSWORD environment variable');
   }
@@ -44,17 +107,21 @@ export const getConfig = (): JiraConfig => {
   const responseFormat: ResponseFormat = responseFormatStr === 'TOON' ? 'TOON' : 'JSON';
 
   // Optional: Request timeout in milliseconds (default: 30000)
-  const timeout = parseInt(process.env.JIRA_TIMEOUT || '30000', 10);
+  const timeout = readInt('JIRA_TIMEOUT', 30000);
 
   // Optional: Number of retries for failed requests (default: 3)
-  const retryCount = parseInt(process.env.JIRA_RETRY_COUNT || '3', 10);
+  const retryCount = readInt('JIRA_RETRY_COUNT', 3);
 
   // Optional: Base delay between retries in ms (default: 1000)
-  const retryDelay = parseInt(process.env.JIRA_RETRY_DELAY || '1000', 10);
+  const retryDelay = readInt('JIRA_RETRY_DELAY', 1000);
 
   // Optional: SSL verification (default: true)
   const sslVerifyStr = process.env.JIRA_SSL_VERIFY?.toLowerCase();
   const sslVerify = sslVerifyStr !== 'false' && sslVerifyStr !== '0';
+  if (!sslVerify) {
+    // Node's fetch has no per-request TLS option; this process only talks to Jira
+    process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
+  }
 
   // Optional: Log level (default: INFO)
   const logLevelStr = process.env.JIRA_LOG_LEVEL?.toUpperCase() as LogLevel | undefined;
@@ -62,7 +129,7 @@ export const getConfig = (): JiraConfig => {
   const logLevel: LogLevel = validLogLevels.includes(logLevelStr as LogLevel) ? logLevelStr as LogLevel : 'INFO';
 
   // Optional: Cache TTL in seconds (default: 300 = 5 minutes)
-  const cacheTtl = parseInt(process.env.JIRA_CACHE_TTL || '300', 10);
+  const cacheTtl = readInt('JIRA_CACHE_TTL', 300);
 
   // Set log level in logger
   setLogLevel(logLevel);
@@ -136,7 +203,7 @@ const toToon = (obj: unknown, indent: number = 0): string => {
     if (obj.every(item => typeof item === 'string' || typeof item === 'number')) {
       return `[${obj.join(', ')}]`;
     }
-    return obj.map((item, i) => `${spaces}- ${toToon(item, indent + 1).trimStart()}`).join('\n');
+    return obj.map(item => `${spaces}- ${toToon(item, indent + 1).trimStart()}`).join('\n');
   }
   
   if (typeof obj === 'object') {

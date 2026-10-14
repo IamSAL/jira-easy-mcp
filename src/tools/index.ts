@@ -14,6 +14,7 @@ export { registerWorklogTools } from './worklogs.js';
 export { registerLinkTools } from './links.js';
 export { registerUserTools } from './users.js';
 export { registerFieldTools } from './fields.js';
+export { registerAttachmentTools } from './attachments.js';
 
 // Re-export core functions for direct use
 export { searchIssues, getIssue, createIssue, updateIssue, deleteIssue } from './issues.js';
@@ -26,3 +27,4 @@ export { getWorklogs, addWorklog, deleteWorklog } from './worklogs.js';
 export { getIssueLinkTypes, createIssueLink, deleteIssueLink, createRemoteLink } from './links.js';
 export { getCurrentUser, getUser, searchUsers, getAssignableUsers } from './users.js';
 export { getAllFields, getCreateMeta, getProjectIssueTypes } from './fields.js';
+export { getIssueImages, uploadAttachment } from './attachments.js';

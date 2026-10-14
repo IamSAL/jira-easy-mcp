@@ -493,6 +493,7 @@ export interface SimplifiedIssue {
   attachments?: Array<{
     id: string;
     filename: string;
+    contentUrl: string;
     author: string;
     size: number;
     mimeType: string;

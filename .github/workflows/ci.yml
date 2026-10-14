@@ -1,0 +1,66 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  unit:
+    name: unit (${{ matrix.os }}, node ${{ matrix.node }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        node: [18, 20, 22, 24]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm run lint
+      - run: pnpm test
+      # The published entry point must start and answer MCP initialize on every OS
+      - name: MCP stdio smoke test
+        run: node scripts/smoke.mjs
+        env:
+          JIRA_BASE_URL: http://127.0.0.1:9
+          JIRA_USERNAME: ci
+          JIRA_PASSWORD: ci
+
+  integration:
+    name: integration (Jira ${{ matrix.jira }}${{ matrix.context }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        # Listed explicitly: an `include` matching jira 9.12 would otherwise
+        # modify that job instead of adding the context-path variant
+        include:
+          - jira: '7.13'
+          - jira: '8.20'
+          - jira: '9.12'
+          - jira: '9.12'
+            context: /jira  # many company installs serve Jira under a sub-path
+          - jira: '10.3'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Start Jira ${{ matrix.jira }}
+        run: node test/integration/jira-docker.mjs up ${{ matrix.jira }} 8080 ${{ matrix.context }}
+      - run: pnpm run test:integration
+        env:
+          JIRA_IT_BASE_URL: http://localhost:8080${{ matrix.context }}
+      - name: Jira logs on failure
+        if: failure()
+        run: docker logs --tail 300 jira-easy-mcp-it-${{ matrix.jira }}
