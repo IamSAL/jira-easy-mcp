@@ -207,7 +207,7 @@ const toToon = (obj: unknown, indent: number = 0): string => {
   }
   
   if (typeof obj === 'object') {
-    const entries = Object.entries(obj).filter(([_, v]) => v !== null && v !== undefined);
+    const entries = Object.entries(obj).filter(([_, v]) => v !== undefined);
     if (entries.length === 0) return '{}';
     return entries
       .map(([key, value]) => {
