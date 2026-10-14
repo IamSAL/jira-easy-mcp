@@ -39,6 +39,9 @@ before(async () => {
       } else if (req.url === '/secure/attachment/2/big.png') {
         res.writeHead(200, { 'Content-Type': 'image/png' });
         res.end(Buffer.alloc(2048));
+      } else if (req.url.startsWith('/rest/api/2/html404')) {
+        res.writeHead(404, { 'Content-Type': 'text/html' });
+        res.end('<!doctype html><html><head><title>HTTP Status 404 – Not Found</title></head></html>');
       } else {
         res.writeHead(404);
         res.end();
@@ -145,4 +148,9 @@ test('GET is retried on 504, POST is not (avoids duplicate writes)', async () =>
 test('a redirecting base URL fails with the target, not a confusing 401', async () => {
   const { jiraPost } = await client();
   await assert.rejects(jiraPost('/moved', {}), /redirected to https:\/\/jira\.example\.com.*JIRA_BASE_URL/);
+});
+
+test('an HTML 404 points at JIRA_BASE_URL (e.g. missing context path)', async () => {
+  const { jiraGet } = await client();
+  await assert.rejects(jiraGet('/html404'), /No Jira REST API at .*JIRA_BASE_URL.*context path/);
 });
