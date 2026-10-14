@@ -27,6 +27,9 @@ export const OTHER_PROJECT_KEY = 'OT';
 
 const containerName = version => `jira-easy-mcp-it-${version.replace(/[^\w.-]/g, '')}`;
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
+// A request to a half-started Jira can hang; without a timeout Node may then
+// exit 0 with the setup unfinished (seen on CI with Jira 10.3)
+const REQUEST_TIMEOUT_MS = 60_000;
 const log = msg => console.error(`[jira-docker] ${msg}`);
 
 const docker = (...args) => execFileSync('docker', args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
@@ -45,6 +48,7 @@ const createSession = baseUrl => {
     const response = await fetch(`${baseUrl}${path}`, {
       method: form ? 'POST' : 'GET',
       redirect: 'manual',
+      signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
       ...options,
       headers,
       body,
@@ -61,7 +65,7 @@ const createSession = baseUrl => {
 
 const getState = async baseUrl => {
   try {
-    const response = await fetch(`${baseUrl}/status`);
+    const response = await fetch(`${baseUrl}/status`, { signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS) });
     return (await response.json()).state;
   } catch {
     return 'DOWN';
@@ -82,6 +86,7 @@ const waitForState = async (baseUrl, states, timeoutMs) => {
 const rest = async (baseUrl, method, path, body) => {
   const response = await fetch(`${baseUrl}/rest${path}`, {
     method,
+    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
     headers: {
       'Authorization': `Basic ${Buffer.from(`${ADMIN.username}:${ADMIN.password}`).toString('base64')}`,
       'Content-Type': 'application/json',
@@ -132,8 +137,8 @@ const runSetupWizard = async (baseUrl, license, { postgresHost }) => {
   }
   // Database initialisation can take minutes; poll until the next step page renders
   for (let i = 0; i < 120; i++) {
-    const response = await request('/secure/SetupApplicationProperties!default.jspa');
-    if (response.status === 200) break;
+    const response = await request('/secure/SetupApplicationProperties!default.jspa').catch(() => null);
+    if (response?.status === 200) break;
     await sleep(5000);
   }
 
@@ -282,10 +287,13 @@ export const down = version => {
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
   const [command, version, port = '8080', contextPath = ''] = process.argv.slice(2);
   if (command === 'up' && version) {
-    up(version, Number(port), contextPath).then(url => console.log(url), err => {
+    // Top-level await: if this never settles, Node exits non-zero instead of 0
+    try {
+      console.log(await up(version, Number(port), contextPath));
+    } catch (err) {
       console.error(err);
       process.exit(1);
-    });
+    }
   } else if (command === 'down' && version) {
     down(version);
   } else {
