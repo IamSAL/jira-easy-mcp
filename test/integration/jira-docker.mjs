@@ -27,6 +27,12 @@ export const OTHER_PROJECT_KEY = 'OT';
 
 const containerName = version => `jira-easy-mcp-it-${version.replace(/[^\w.-]/g, '')}`;
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
+// A request to a half-started Jira can hang; without a timeout Node may then
+// exit 0 with the setup unfinished (seen on CI with Jira 10.3)
+const REQUEST_TIMEOUT_MS = 60_000;
+// Wizard steps run synchronously on the server; database setup can take many minutes
+const WIZARD_TIMEOUT_MS = 5 * 60_000;
+const DATABASE_SETUP_TIMEOUT_MS = 15 * 60_000;
 const log = msg => console.error(`[jira-docker] ${msg}`);
 
 const docker = (...args) => execFileSync('docker', args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
@@ -34,7 +40,7 @@ const docker = (...args) => execFileSync('docker', args, { encoding: 'utf8', std
 /** Minimal cookie-jar fetch for the browser-style setup wizard. */
 const createSession = baseUrl => {
   const cookies = new Map();
-  const request = async (path, { form, ...options } = {}) => {
+  const request = async (path, { form, timeout = WIZARD_TIMEOUT_MS, ...options } = {}) => {
     const headers = { Cookie: [...cookies].map(([k, v]) => `${k}=${v}`).join('; '), ...options.headers };
     let body;
     if (form) {
@@ -45,6 +51,7 @@ const createSession = baseUrl => {
     const response = await fetch(`${baseUrl}${path}`, {
       method: form ? 'POST' : 'GET',
       redirect: 'manual',
+      signal: AbortSignal.timeout(timeout),
       ...options,
       headers,
       body,
@@ -61,7 +68,7 @@ const createSession = baseUrl => {
 
 const getState = async baseUrl => {
   try {
-    const response = await fetch(`${baseUrl}/status`);
+    const response = await fetch(`${baseUrl}/status`, { signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS) });
     return (await response.json()).state;
   } catch {
     return 'DOWN';
@@ -82,6 +89,7 @@ const waitForState = async (baseUrl, states, timeoutMs) => {
 const rest = async (baseUrl, method, path, body) => {
   const response = await fetch(`${baseUrl}/rest${path}`, {
     method,
+    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
     headers: {
       'Authorization': `Basic ${Buffer.from(`${ADMIN.username}:${ADMIN.password}`).toString('base64')}`,
       'Content-Type': 'application/json',
@@ -121,6 +129,7 @@ const runSetupWizard = async (baseUrl, license, { postgresHost }) => {
   if (postgresHost) {
     log('setup: database (PostgreSQL)');
     await request('/secure/SetupDatabase.jspa', {
+      timeout: DATABASE_SETUP_TIMEOUT_MS,
       form: {
         databaseOption: 'external', databaseType: 'postgres72', jdbcHostname: postgresHost, jdbcPort: '5432',
         jdbcDatabase: 'jira', jdbcUsername: 'jira', jdbcPassword: 'jira', schemaName: 'public', testingConnection: 'false',
@@ -128,12 +137,15 @@ const runSetupWizard = async (baseUrl, license, { postgresHost }) => {
     });
   } else {
     log('setup: database (embedded)');
-    await request('/secure/SetupDatabase.jspa', { form: { databaseOption: 'internal' } });
+    await request('/secure/SetupDatabase.jspa', {
+      timeout: DATABASE_SETUP_TIMEOUT_MS,
+      form: { databaseOption: 'internal' },
+    });
   }
   // Database initialisation can take minutes; poll until the next step page renders
   for (let i = 0; i < 120; i++) {
-    const response = await request('/secure/SetupApplicationProperties!default.jspa');
-    if (response.status === 200) break;
+    const response = await request('/secure/SetupApplicationProperties!default.jspa').catch(() => null);
+    if (response?.status === 200) break;
     await sleep(5000);
   }
 
@@ -282,10 +294,13 @@ export const down = version => {
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
   const [command, version, port = '8080', contextPath = ''] = process.argv.slice(2);
   if (command === 'up' && version) {
-    up(version, Number(port), contextPath).then(url => console.log(url), err => {
+    // Top-level await: if this never settles, Node exits non-zero instead of 0
+    try {
+      console.log(await up(version, Number(port), contextPath));
+    } catch (err) {
       console.error(err);
       process.exit(1);
-    });
+    }
   } else if (command === 'down' && version) {
     down(version);
   } else {

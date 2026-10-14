@@ -1,0 +1,46 @@
+name: Publish to npm
+
+# Publishes when a GitHub Release is published (tag vX.Y.Z matching package.json).
+# Uses npm trusted publishing (OIDC): no NPM_TOKEN secret is stored. The package
+# must list this repository and workflow file as a trusted publisher on npmjs.com.
+on:
+  release:
+    types: [published]
+
+permissions:
+  id-token: write # mint the OIDC token npm exchanges for publish rights
+  contents: read
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24 # ships npm 11, which supports trusted publishing
+          registry-url: https://registry.npmjs.org
+      - run: npm install -g npm@11 # trusted publishing needs npm >= 11.5.1
+      - run: pnpm install --frozen-lockfile
+      - name: Release tag must match package.json version
+        run: |
+          version="v$(node -p "require('./package.json').version")"
+          if [ "$version" != "$GITHUB_REF_NAME" ]; then
+            echo "Release tag $GITHUB_REF_NAME does not match package.json $version"; exit 1
+          fi
+      - run: pnpm run lint
+      - run: pnpm test
+      - name: MCP stdio smoke test
+        run: node scripts/smoke.mjs
+        env:
+          JIRA_BASE_URL: http://127.0.0.1:9
+          JIRA_USERNAME: ci
+          JIRA_PASSWORD: ci
+      # npm silently drops invalid package.json entries (it once dropped `bin`,
+      # which would break `npx jira-easy-mcp`); fail instead
+      - name: Package check
+        run: |
+          npm publish --dry-run --provenance=false 2>&1 | tee publish-check.log
+          if grep -q "invalid and removed" publish-check.log; then exit 1; fi
+      - run: npm publish --provenance --access public
