@@ -90,7 +90,9 @@ const rest = async (baseUrl, method, path, body) => {
     body: body === undefined ? undefined : JSON.stringify(body),
   });
   const text = await response.text();
-  return { status: response.status, data: text ? JSON.parse(text) : undefined, text };
+  let data;
+  try { data = text ? JSON.parse(text) : undefined; } catch { /* HTML error page */ }
+  return { status: response.status, data, text };
 };
 
 /** GET a wizard step and report its form field names (for debugging new Jira versions). */
@@ -166,7 +168,13 @@ const runSetupWizard = async (baseUrl, license, { postgresHost }) => {
 };
 
 const seed = async baseUrl => {
-  const myself = await rest(baseUrl, 'GET', '/api/2/myself');
+  // /status says RUNNING before plugins finish starting; REST answers 503 until then
+  let myself;
+  for (let i = 0; i < 60; i++) {
+    myself = await rest(baseUrl, 'GET', '/api/2/myself').catch(() => ({ status: 0, text: '' }));
+    if (myself.status !== 503 && myself.status !== 0) break;
+    await sleep(5000);
+  }
   if (myself.status !== 200) {
     throw new Error(`Admin login failed after setup (${myself.status}): ${myself.text.slice(0, 300)}`);
   }

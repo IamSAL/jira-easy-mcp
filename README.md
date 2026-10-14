@@ -5,7 +5,7 @@
 
 Another Model Context Protocol (MCP) server for Jira, without Auth token. Provides tools for complete Jira automation including issues, projects, boards, sprints, comments, worklogs, and more.
 
-> **Tested on:** Jira Server v7.12.3 (self-hosted)
+> **Tested on:** Jira Server / Data Center 7.13, 8.20, 9.12 and 10.3 (every tool, automated, see [Development & Testing](#development--testing))
 
 ---
 
@@ -184,9 +184,14 @@ version above.
 
 | Jira Version | Status |
 | --- | --- |
-| Jira Server v7.12.3 | ✅ Tested |
-| Jira Server v8.x | ✅ Tested |
+| Jira Server 7.12.3 | ✅ Tested manually |
+| Jira Server 7.13 | ✅ Automated (all tools) |
+| Jira Server / DC 8.20 | ✅ Automated (all tools) |
+| Jira DC 9.12 (also under a `/jira` context path) | ✅ Automated (all tools) |
+| Jira DC 10.3 | ✅ Automated (all tools) |
 | Jira Cloud | ︖ Not tested (Use official MCP) |
+
+Requires Node.js 18+. CI runs the unit and MCP smoke tests on macOS, Linux and Windows (Node.js 18–24).
 
 **You can improve this by [reporting issues](https://github.com/IamSAL/jira-easy-mcp/issues/new/choose)**
 
