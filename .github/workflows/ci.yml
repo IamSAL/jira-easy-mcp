@@ -34,13 +34,21 @@ jobs:
           JIRA_PASSWORD: ci
 
   integration:
-    name: integration (Jira ${{ matrix.jira }})
+    name: integration (Jira ${{ matrix.jira }}${{ matrix.context }})
     runs-on: ubuntu-latest
     timeout-minutes: 40
     strategy:
       fail-fast: false
       matrix:
-        jira: ['7.13', '8.20', '9.12', '10.3']
+        # Listed explicitly: an `include` matching jira 9.12 would otherwise
+        # modify that job instead of adding the context-path variant
+        include:
+          - jira: '7.13'
+          - jira: '8.20'
+          - jira: '9.12'
+          - jira: '9.12'
+            context: /jira  # many company installs serve Jira under a sub-path
+          - jira: '10.3'
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -50,10 +58,10 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - name: Start Jira ${{ matrix.jira }}
-        run: node test/integration/jira-docker.mjs up ${{ matrix.jira }} 8080
+        run: node test/integration/jira-docker.mjs up ${{ matrix.jira }} 8080 ${{ matrix.context }}
       - run: pnpm run test:integration
         env:
-          JIRA_IT_BASE_URL: http://localhost:8080
+          JIRA_IT_BASE_URL: http://localhost:8080${{ matrix.context }}
       - name: Jira logs on failure
         if: failure()
         run: docker logs --tail 300 jira-easy-mcp-it-${{ matrix.jira }}

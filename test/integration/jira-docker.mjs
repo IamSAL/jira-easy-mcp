@@ -2,8 +2,10 @@
 /**
  * Spin up a throwaway Jira Software instance in Docker for integration tests.
  *
- *   node test/integration/jira-docker.mjs up <version> [port]   # start + set up + seed
- *   node test/integration/jira-docker.mjs down <version>        # remove container
+ *   node test/integration/jira-docker.mjs up <version> [port] [contextPath]   # start + set up + seed
+ *   node test/integration/jira-docker.mjs down <version>                      # remove container
+ *
+ * contextPath (e.g. /jira) serves Jira under a sub-path, like many company installs.
  *
  * Setup uses Atlassian's public 3-hour "timebomb" Data Center license
  * (https://developer.atlassian.com/platform/marketplace/timebomb-licenses-for-testing-server-apps/),
@@ -225,9 +227,9 @@ const startPostgres = name => {
   return db;
 };
 
-export const up = async (version, port) => {
+export const up = async (version, port, contextPath = '') => {
   const name = containerName(version);
-  const baseUrl = `http://localhost:${port}`;
+  const baseUrl = `http://localhost:${port}${contextPath}`;
   const license = readFileSync(join(here, 'timebomb-license.txt'), 'utf8').trim();
   const postgres = needsPostgres(version);
 
@@ -243,6 +245,7 @@ export const up = async (version, port) => {
       'run', '-d', '--name', name, '-p', `${port}:8080`, ...dbArgs,
       '-e', 'JVM_MINIMUM_MEMORY=1024m', '-e', 'JVM_MAXIMUM_MEMORY=2048m',
       '-e', `ATL_PROXY_NAME=localhost`, '-e', `ATL_PROXY_PORT=${port}`, '-e', 'ATL_TOMCAT_SCHEME=http',
+      ...(contextPath ? ['-e', `ATL_TOMCAT_CONTEXTPATH=${contextPath}`] : []),
       `atlassian/jira-software:${version}`
     );
   } else {
@@ -269,16 +272,16 @@ export const down = version => {
 };
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
-  const [command, version, port = '8080'] = process.argv.slice(2);
+  const [command, version, port = '8080', contextPath = ''] = process.argv.slice(2);
   if (command === 'up' && version) {
-    up(version, Number(port)).then(url => console.log(url), err => {
+    up(version, Number(port), contextPath).then(url => console.log(url), err => {
       console.error(err);
       process.exit(1);
     });
   } else if (command === 'down' && version) {
     down(version);
   } else {
-    console.error('usage: jira-docker.mjs up <version> [port] | down <version>');
+    console.error('usage: jira-docker.mjs up <version> [port] [contextPath] | down <version>');
     process.exit(2);
   }
 }
