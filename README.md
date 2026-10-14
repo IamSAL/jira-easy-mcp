@@ -23,6 +23,26 @@ Most Jira MCP servers require OAuth or API tokens, which many organizations rest
 
 ## Quick Start
 
+### Store Jira Credentials
+
+Store credentials in the operating system account that will run the MCP server:
+
+**macOS (Keychain):**
+
+```bash
+security add-generic-password -s "JiraMCP" -a "YOUR_USERID" -w "YOUR_PASSWORD" -U
+```
+
+**Windows (Credential Manager):**
+
+```powershell
+cmdkey /generic:JiraMCP /user:YOUR_USERID /pass:YOUR_PASSWORD
+```
+
+The MCP server reads credentials from a Windows **Generic Credential** with target `JiraMCP`. `cmdkey /add` creates a Windows/Domain credential, whose password is not available to this application. If you already created a `JiraMCP` entry with `/add`, remove that entry in Credential Manager, then create it with `/generic` as shown above. If multiple macOS entries use the service, set `JIRA_USERNAME` to select the matching account. For older installations, setting both `JIRA_USERNAME` and `JIRA_PASSWORD` remains a fallback when no matching system credential is available.
+
+> **Security note:** These commands may leave the password in shell history or briefly expose it in process arguments. Use your shell's secure input or credential-entry method where available.
+
 ### VS Code (Workspace Configuration)
 
 Create `.vscode/mcp.json` in your workspace root:
@@ -33,11 +53,9 @@ Create `.vscode/mcp.json` in your workspace root:
     "jira": {
       "type": "stdio",
       "command": "npx",
-      "args": ["-y", "@rainmakerho/jira-easy-mcp"],
+      "args": ["-y", "@rainmakerho/jira-easy-mcp@latest"],
       "env": {
         "JIRA_BASE_URL": "https://your-jira-instance.com",
-        "JIRA_USERNAME": "your-username",
-        "JIRA_PASSWORD": "your-password",
         "JIRA_PROJECTS_FILTER": "ABC,DEF,XYZ",
         "JIRA_RESPONSE_FORMAT": "JSON"
       }
@@ -56,7 +74,7 @@ Add to your VS Code settings for accessing in all workspaces.
 **Windsurf:** Add to your Windsurf MCP settings: (use `"mcp": { "servers": { ... } }` wrapper)  
 **Claude Desktop:** Edit `~/.claude/mcp.json` (use `"mcpServers": { ... }` wrapper)
 
-All use the same `command`, `args`, and `env` configuration as VS Code above.
+All use the same `command`, `args`, and non-secret `env` configuration as VS Code above. Credentials are read from the operating system credential store; do not add them to the IDE configuration.
 
 ---
 
@@ -108,7 +126,7 @@ This opens a browser at `http://localhost:6274` where you can:
 - Test each tool with custom parameters
 - See the raw JSON responses
 
-> **Note:** Put these values inside inspector UI before connecting: `JIRA_BASE_URL`, `JIRA_USERNAME`, `JIRA_PASSWORD`.
+> **Note:** Set `JIRA_BASE_URL` in the Inspector environment before connecting. Credentials are read from the operating system credential store; the legacy `JIRA_USERNAME` and `JIRA_PASSWORD` fallback is also supported.
 
 ---
 

@@ -4,10 +4,12 @@
  *
  * A comprehensive MCP server for Jira integration using REST API with Basic Authentication.
  *
- * Environment variables:
- *   JIRA_BASE_URL          - Jira instance URL (e.g., https://your-jira.com)
+ * Credentials are loaded from the OS credential store (service: JiraMCP).
+ * Legacy environment variable fallback:
  *   JIRA_USERNAME          - Jira username
  *   JIRA_PASSWORD          - Jira password (or API token for Jira Cloud)
+ * Other environment variables:
+ *   JIRA_BASE_URL          - Jira instance URL (e.g., https://your-jira.com)
  *   JIRA_PROJECTS_FILTER   - Optional: Comma-separated project keys to limit access
  *   JIRA_RESPONSE_FORMAT   - Optional: Response format - JSON (default) or TOON
  *   JIRA_TIMEOUT           - Optional: Request timeout in ms (default: 30000)
@@ -20,7 +22,7 @@
 
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
-import { validateConfig, getConfig } from "./config.js";
+import { initializeConfig, validateConfig, getConfig } from "./config.js";
 import { info, error as logError } from "./logger.js";
 import {
   registerIssueTools,
@@ -36,37 +38,16 @@ import {
   registerAttachmentTools,
 } from "./tools/index.js";
 
-// Validate configuration early
-try {
-  validateConfig();
-} catch (err) {
-  logError("Configuration error", {
-    error: err instanceof Error ? err.message : String(err),
-  });
-  process.exit(1);
-}
-
 // Create MCP server
 const server = new McpServer({
   name: "jira-easy-mcp",
   version: "1.1.0",
 });
 
-// Register all tools
-registerIssueTools(server);
-registerCommentTools(server);
-registerTransitionTools(server);
-registerProjectTools(server);
-registerBoardTools(server);
-registerSprintTools(server);
-registerWorklogTools(server);
-registerLinkTools(server);
-registerUserTools(server);
-registerFieldTools(server);
-registerAttachmentTools(server);
-
 // Start the server
 const main = async (): Promise<void> => {
+  await initializeConfig();
+  validateConfig();
   const config = getConfig();
 
   info("Jira MCP Server starting...", {
@@ -80,6 +61,18 @@ const main = async (): Promise<void> => {
     logLevel: config.logLevel,
     cacheTtl: `${config.cacheTtl}s`,
   });
+
+  registerIssueTools(server);
+  registerCommentTools(server);
+  registerTransitionTools(server);
+  registerProjectTools(server);
+  registerBoardTools(server);
+  registerSprintTools(server);
+  registerWorklogTools(server);
+  registerLinkTools(server);
+  registerUserTools(server);
+  registerFieldTools(server);
+  registerAttachmentTools(server);
 
   const transport = new StdioServerTransport();
   await server.connect(transport);
