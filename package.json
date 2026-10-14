@@ -21,9 +21,12 @@
     "lint": "eslint src --ext .ts",
     "lint:fix": "eslint src --ext .ts --fix",
     "typecheck": "tsc --noEmit",
-    "test": "tsc && node --test 'test/*.test.mjs'",
+    "test": "tsc && node scripts/run-tests.mjs unit",
     "reload-mcp": "pnpm run prepublishOnly && node dist/index.js",
-    "prepare": "npm run build"
+    "prepare": "npm run build",
+    "test:integration": "tsc && node scripts/run-tests.mjs integration",
+    "jira:up": "node test/integration/jira-docker.mjs up",
+    "jira:down": "node test/integration/jira-docker.mjs down"
   },
   "keywords": [
     "mcp",

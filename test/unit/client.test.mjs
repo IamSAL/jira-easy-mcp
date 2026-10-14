@@ -5,6 +5,7 @@ import http from 'node:http';
 let server;
 let baseUrl;
 let lastRequest;
+const hits = {};
 
 before(async () => {
   server = http.createServer((req, res) => {
@@ -18,6 +19,10 @@ before(async () => {
         res.end();
       } else if (req.url === '/rest/agile/1.0/empty') {
         res.writeHead(201);
+        res.end();
+      } else if (req.url.startsWith('/rest/api/2/flaky')) {
+        hits[req.method] = (hits[req.method] || 0) + 1;
+        res.writeHead(504);
         res.end();
       } else if (req.url === '/rest/api/2/myself') {
         res.writeHead(200, { 'Content-Type': 'application/json' });
@@ -42,13 +47,14 @@ before(async () => {
   process.env.JIRA_BASE_URL = baseUrl;
   process.env.JIRA_USERNAME = 'tester';
   process.env.JIRA_PASSWORD = 'secret';
-  process.env.JIRA_RETRY_COUNT = '0';
+  process.env.JIRA_RETRY_COUNT = '2';
+  process.env.JIRA_RETRY_DELAY = '1';
   process.env.JIRA_LOG_LEVEL = 'ERROR';
 });
 
 after(() => server.close());
 
-const client = () => import('../dist/client.js');
+const client = () => import('../../dist/client.js');
 
 test('201 with empty body resolves to undefined (issue #2)', async () => {
   const { jiraPost } = await client();
@@ -116,11 +122,19 @@ test('uploadAttachment sends the file with its MIME type', async () => {
   const { mkdtemp, writeFile } = await import('node:fs/promises');
   const { join } = await import('node:path');
   const { tmpdir } = await import('node:os');
-  const { uploadAttachment } = await import('../dist/tools/attachments.js');
+  const { uploadAttachment } = await import('../../dist/tools/attachments.js');
   const dir = await mkdtemp(join(tmpdir(), 'jira-mcp-'));
   const file = join(dir, 'shot.png');
   await writeFile(file, Buffer.from([1, 2, 3]));
   await uploadAttachment('KP-1', file);
   assert.match(lastRequest.body, /filename="shot.png"\r\nContent-Type: image\/png/);
   await assert.rejects(uploadAttachment('KP-1', 'relative.png'), /absolute path/);
+});
+
+test('GET is retried on 504, POST is not (avoids duplicate writes)', async () => {
+  const { jiraGet, jiraPost } = await client();
+  await assert.rejects(jiraGet('/flaky'), /504/);
+  await assert.rejects(jiraPost('/flaky', {}), /504/);
+  assert.equal(hits.GET, 3, 'GET: 1 attempt + 2 retries');
+  assert.equal(hits.POST, 1, 'POST must not be retried');
 });
