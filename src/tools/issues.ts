@@ -323,6 +323,7 @@ export const registerIssueTools = (server: McpServer): void => {
       fixVersions: z.array(z.string()).optional().describe('Fix version names'),
       dueDate: z.string().optional().describe('Due date in YYYY-MM-DD format'),
       parentKey: z.string().optional().describe('Parent issue key for subtasks'),
+      customFields: z.record(z.unknown()).optional().describe('Custom/mandatory fields not covered by the other parameters, keyed by field ID (e.g., {"customfield_10010": "value"}). Use jira_get_create_meta to discover field IDs and expected value shapes (string, {"value": "..."}, {"id": "..."}, array, etc.)'),
     },
     async (args) => {
       const callLog = startToolCall('jira_create_issue', args);
@@ -336,6 +337,7 @@ export const registerIssueTools = (server: McpServer): void => {
           fixVersions: args.fixVersions,
           dueDate: args.dueDate,
           parentKey: args.parentKey,
+          customFields: args.customFields,
         });
         endToolCall(callLog, result);
         return { content: [{ type: 'text', text: formatResponse(result) }] };
@@ -349,7 +351,7 @@ export const registerIssueTools = (server: McpServer): void => {
   // Update issue
   server.tool(
     'jira_update_issue',
-    'Modify an existing Jira issue\'s fields (summary, description, assignee, priority, labels, components, fix versions, due date). Only the fields you specify will be changed - others remain unchanged. To change status/workflow state, use jira_transition_issue instead. To add comments, use jira_add_comment.',
+    'Modify an existing Jira issue\'s fields (summary, description, assignee, priority, labels, components, fix versions, due date, custom fields). Only the fields you specify will be changed - others remain unchanged. To change status/workflow state, use jira_transition_issue instead. To add comments, use jira_add_comment.',
     {
       issueKey: z.string().describe('Issue key to update (e.g., KP-123)'),
       summary: z.string().optional().describe('New issue title/summary'),
@@ -360,6 +362,7 @@ export const registerIssueTools = (server: McpServer): void => {
       components: z.array(z.string()).optional().describe('New components (replaces existing)'),
       fixVersions: z.array(z.string()).optional().describe('New fix versions (replaces existing)'),
       dueDate: z.string().optional().describe('New due date in YYYY-MM-DD format'),
+      customFields: z.record(z.unknown()).optional().describe('Custom/mandatory fields not covered by the other parameters, keyed by field ID (e.g., {"customfield_10010": "value"}). Use jira_get_create_meta to discover field IDs and expected value shapes (string, {"value": "..."}, {"id": "..."}, array, etc.)'),
     },
     async (args) => {
       const callLog = startToolCall('jira_update_issue', args);
@@ -373,6 +376,7 @@ export const registerIssueTools = (server: McpServer): void => {
           components: args.components,
           fixVersions: args.fixVersions,
           dueDate: args.dueDate,
+          customFields: args.customFields,
         });
         const result = { success: true, message: `Issue ${args.issueKey} updated successfully.` };
         endToolCall(callLog, result);
