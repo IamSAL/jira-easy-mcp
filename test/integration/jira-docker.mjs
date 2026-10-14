@@ -170,7 +170,7 @@ const runSetupWizard = async (baseUrl, license, { postgresHost }) => {
 const seed = async baseUrl => {
   // /status says RUNNING before plugins finish starting; REST answers 503 until then
   let myself;
-  for (let i = 0; i < 60; i++) {
+  for (let i = 0; i < 120; i++) {
     myself = await rest(baseUrl, 'GET', '/api/2/myself').catch(() => ({ status: 0, text: '' }));
     if (myself.status !== 503 && myself.status !== 0) break;
     await sleep(5000);

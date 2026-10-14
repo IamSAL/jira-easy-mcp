@@ -27,6 +27,10 @@ before(async () => {
       } else if (req.url.startsWith('/rest/api/2/moved')) {
         res.writeHead(301, { Location: 'https://jira.example.com/rest/api/2/moved' });
         res.end();
+      } else if (req.url.startsWith('/rest/api/2/denied')) {
+        hits.denied = (hits.denied || 0) + 1;
+        res.writeHead(401, { 'Content-Type': 'application/json' });
+        res.end('{"errorMessages":["Unauthorized"]}');
       } else if (req.url === '/rest/api/2/myself') {
         res.writeHead(200, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ name: 'tester' }));
@@ -157,4 +161,12 @@ test('a redirecting base URL fails with the target, not a confusing 401', async 
 test('an HTML 404 points at JIRA_BASE_URL (e.g. missing context path)', async () => {
   const { jiraGet } = await client();
   await assert.rejects(jiraGet('/html404'), /No Jira REST API at .*JIRA_BASE_URL.*context path/);
+});
+
+test('after a 401 no more credentials are sent (avoids CAPTCHA lockout)', async () => {
+  const { jiraGet } = await import(`../../dist/client.js?auth=${Date.now()}`);
+  await assert.rejects(jiraGet('/denied'), /Authentication failed/);
+  await assert.rejects(jiraGet('/denied'), /Authentication failed.*restart/);
+  await assert.rejects(jiraGet('/myself'), /Authentication failed/);
+  assert.equal(hits.denied, 1, 'only the first request reaches Jira');
 });

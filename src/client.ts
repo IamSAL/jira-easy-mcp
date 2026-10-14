@@ -39,6 +39,19 @@ export interface JiraBinaryResponse {
   url: string;
 }
 
+// Set by the first 401. Credentials cannot change while the server runs, and
+// Jira demands a CAPTCHA after a few failed logins (locking the user out of
+// the browser too), so later requests fail fast instead of retrying the login.
+let authFailure: JiraApiException | null = null;
+
+const failAuthentication = (status: number): JiraApiException => {
+  authFailure = new JiraApiException(
+    'Authentication failed. Check JIRA_USERNAME and JIRA_PASSWORD (or the "JiraMCP" OS credential), then restart the MCP server. Further requests are blocked so repeated failures do not trigger a Jira CAPTCHA lockout.',
+    status
+  );
+  return authFailure;
+};
+
 /**
  * Parse error response from Jira API.
  */
@@ -146,6 +159,7 @@ export const jiraFetch = async <T = unknown>(
   };
 
 
+  if (authFailure) throw authFailure;
   let lastError: Error | null = null;
   
   for (let attempt = 0; attempt <= retryCount; attempt++) {
@@ -184,10 +198,7 @@ export const jiraFetch = async <T = unknown>(
         }
         
         if (response.status === 401) {
-          throw new JiraApiException(
-            'Authentication failed. Check JIRA_USERNAME and JIRA_PASSWORD (or the "JiraMCP" OS credential).',
-            response.status
-          );
+          throw failAuthentication(response.status);
         }
         if (response.status === 403) {
           // Jira sets this header when too many failed logins triggered a CAPTCHA
@@ -283,6 +294,7 @@ export const jiraDownloadAttachment = async (
     );
   }
 
+  if (authFailure) throw authFailure;
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), timeout);
   const fetchOptions: RequestInit = {
@@ -302,6 +314,9 @@ export const jiraDownloadAttachment = async (
     const response = await fetch(url, fetchOptions);
     logApiResponse('GET', url.toString(), response.status, Date.now() - startTime);
 
+    if (response.status === 401) {
+      throw failAuthentication(response.status);
+    }
     if (!response.ok) {
       const errorText = await parseErrorResponse(response);
       throw new JiraApiException(
@@ -389,6 +404,7 @@ export const jiraAgileFetch = async <T = unknown>(
   };
 
 
+  if (authFailure) throw authFailure;
   let lastError: Error | null = null;
   
   for (let attempt = 0; attempt <= retryCount; attempt++) {
@@ -426,6 +442,9 @@ export const jiraAgileFetch = async <T = unknown>(
           continue;
         }
         
+        if (response.status === 401) {
+          throw failAuthentication(response.status);
+        }
         throw new JiraApiException(
           `Jira Agile API error (${response.status}): ${errorText}`,
           response.status

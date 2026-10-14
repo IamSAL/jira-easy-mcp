@@ -95,6 +95,10 @@ describe('authentication', { skip: !env && 'JIRA_IT_BASE_URL not set' }, () => {
       assert.equal(result.isError, true);
       assert.match(result.text, /Authentication failed/);
       assert.ok(Date.now() - started < 5000, 'a 401 must not be retried with backoff');
+      // Later calls must not log in again: each failed login counts toward Jira's CAPTCHA
+      const again = await server.call('jira_search', { jql: 'project = IT' });
+      assert.equal(again.isError, true);
+      assert.match(again.text, /restart the MCP server/);
     } finally {
       await server.close();
     }
@@ -105,9 +109,11 @@ describe('authentication', { skip: !env && 'JIRA_IT_BASE_URL not set' }, () => {
   });
 
   it('CAPTCHA lockout is reported as such', async () => {
-    const bad = await startServer({ ...env, JIRA_USERNAME: lockedOut, JIRA_PASSWORD: 'wrong' });
-    for (let i = 0; i < 4; i++) await bad.call('jira_get_myself');
-    await bad.close();
+    // Simulate other clients (or a browser) failing to log in repeatedly
+    const wrong = `Basic ${Buffer.from(`${lockedOut}:wrong`).toString('base64')}`;
+    for (let i = 0; i < 4; i++) {
+      await fetch(`${env.JIRA_BASE_URL}/rest/api/2/myself`, { headers: { Authorization: wrong } });
+    }
 
     const server = await startServer({ ...env, JIRA_USERNAME: lockedOut, JIRA_PASSWORD: 'Right-pass-1' });
     try {
