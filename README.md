@@ -106,6 +106,7 @@ If several accounts are stored, set `JIRA_USERNAME` to choose one. When both `JI
 | **Upload attachment** | `jira_upload_attachment` | "Attach /Users/me/Desktop/error.png to ABC-123" |
 | **Create issue** | `jira_create_issue` | "Create a new bug in project ABC with title 'Login button not working'" |
 | **Update issue** | `jira_update_issue` | "Change the priority of ABC-123 to High and assign it to john.doe" |
+| **Edit custom fields** | `jira_update_issue` + `jira_get_edit_meta` | "Set Severity on ABC-123 to Critical" (unique name or `customfield_` id) |
 | **Add comment** | `jira_add_comment` | "Add a comment to ABC-123 saying 'Fix deployed to staging'" |
 | **Change status** | `jira_transition_issue` | "Move ABC-123 to Done" |
 | **Log time** | `jira_add_worklog` | "Log 2 hours of work on ABC-123 for yesterday" |
@@ -131,6 +132,50 @@ This opens a browser at `http://localhost:6274` where you can:
 - See the raw JSON responses
 
 > **Note:** Put these values inside inspector UI before connecting: `JIRA_BASE_URL`, `JIRA_USERNAME`, `JIRA_PASSWORD`.
+
+---
+
+## Custom fields
+
+Jira REST API v2 identifies custom fields by id (`customfield_10006`). Values are the raw REST payload for that field type. Display names work only when they are unique (exact, case-sensitive) on the relevant screen.
+
+### Read (`jira_get_issue`)
+
+Default response: system fields plus custom fields that currently have a value, each as `{ "id", "name", "value" }`. Comments, worklogs, and attachments are omitted unless you pass `include: ["comments"]` (and/or `worklogs`, `attachments`). Null custom fields are omitted unless `customFields: "all"` or you pass `fields`.
+
+`fields` narrows the custom-field GET (ids like `customfield_11205`, or unique edit-screen names like `Severity`). Requested fields are returned even when null. Names come from this issue's `expand=names`, not from `GET /field`.
+
+```json
+{
+  "key": "ABC-123",
+  "customFields": [
+    { "id": "customfield_10006", "name": "Story Points", "value": 5 },
+    { "id": "customfield_10107", "name": "Flagged", "value": { "value": "Yes" } }
+  ]
+}
+```
+
+### Write (`jira_update_issue` / `jira_create_issue`)
+
+Pass `customFields` keyed by id (`customfield_10006`) or by a unique name from `jira_get_edit_meta` / `jira_get_create_meta`. Ids need no extra GET. Names resolve against that issue type's meta; duplicate names fail closed (use the id). Do **not** call `jira_get_fields` before every write.
+
+| Schema `type` | REST value |
+| --- | --- |
+| string / number / date | `"text"`, `5`, `"2011-10-03"` |
+| option (select) | `{ "value": "Yes" }` or `{ "id": "10100" }` |
+| user (Server) | `{ "name": "username" }` — not Cloud `accountId` |
+| array of options | `[{ "value": "A" }, { "value": "B" }]` (`itemsType`: `option`) |
+| clear | `null` |
+
+A field listed by `jira_get_fields` but missing from edit/create meta is not on that screen and cannot be updated.
+
+### Search (`jira_search`)
+
+Default search returns system fields only (no custom fields, no comment/worklog/attachment dumps). `fields` is additive extras: system keys and `customfield_` ids pass through; display names are resolved with a live uncached `GET /field`. Prefer ids. Ambiguous names fail closed.
+
+### Catalog (`jira_get_fields`)
+
+Use this for JQL clause names, not as a pre-step for every create/update. For fields on an issue type, use `jira_get_edit_meta` or `jira_get_create_meta`.
 
 ---
 
@@ -197,7 +242,7 @@ version above.
 
 | Jira Version | Status |
 | --- | --- |
-| Jira Server 7.12.3 | ✅ Tested manually |
+| Jira Server 7.12.1 / 7.12.3 | ✅ Tested manually |
 | Jira Server 7.13 | ✅ Automated (all tools) |
 | Jira Server / DC 8.20 | ✅ Automated (all tools) |
 | Jira DC 9.12 (also under a `/jira` context path) | ✅ Automated (all tools) |

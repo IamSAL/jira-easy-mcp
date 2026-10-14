@@ -43,7 +43,7 @@ describe('MCP tools against live Jira', { skip: !env && 'JIRA_IT_BASE_URL not se
   describe('discovery', () => {
     it('lists all tools with input schemas', async () => {
       const { tools } = await server.client.listTools();
-      assert.ok(tools.length >= 41, `expected >= 41 tools, got ${tools.length}`);
+      assert.ok(tools.length >= 42, `expected >= 42 tools, got ${tools.length}`);
       for (const tool of tools) {
         assert.equal(tool.inputSchema.type, 'object', `${tool.name} schema`);
         assert.ok(tool.description.length > 20, `${tool.name} needs a description`);
@@ -168,6 +168,34 @@ describe('MCP tools against live Jira', { skip: !env && 'JIRA_IT_BASE_URL not se
       await server.ok('jira_update_issue', { issueKey: state.epicKey, customFields: { [state.epicNameField]: 'Renamed Epic' } });
       const search = await server.ok('jira_search', { jql: `key = ${state.epicKey}`, fields: ['summary', state.epicNameField] });
       assert.match(search.text, /Renamed Epic/);
+    });
+
+    it('jira_get_edit_meta lists the editable custom fields (from #1)', async (t) => {
+      if (!state.epicKey) return t.skip('no epic');
+      const { json } = await server.ok('jira_get_edit_meta', { issueKey: state.epicKey, customOnly: true });
+      const epicName = json.fields.find(f => f.id === state.epicNameField);
+      assert.ok(epicName, `Epic Name editable: ${JSON.stringify(json).slice(0, 400)}`);
+      assert.equal(epicName.name, 'Epic Name');
+      assert.ok(json.fields.every(f => f.id.startsWith('customfield_')));
+    });
+
+    it('custom fields can be written by display name and read back as {id, name, value} (from #1)', async (t) => {
+      if (!state.epicKey) return t.skip('no epic');
+      await server.ok('jira_update_issue', { issueKey: state.epicKey, customFields: { 'Epic Name': 'Named Epic' } });
+      const { json } = await server.ok('jira_get_issue', { issueKey: state.epicKey });
+      const row = json.customFields.find(f => f.id === state.epicNameField);
+      assert.deepEqual(row, { id: state.epicNameField, name: 'Epic Name', value: 'Named Epic' });
+      const unknown = await server.call('jira_update_issue', { issueKey: state.epicKey, customFields: { 'No Such Field': 1 } });
+      assert.equal(unknown.isError, true);
+      assert.match(unknown.text, /No Such Field/);
+    });
+
+    it('jira_get_issue omits comments unless included (from #1)', async () => {
+      await server.ok('jira_add_comment', { issueKey: state.bugKey, body: 'visible only with include' });
+      const slim = await server.ok('jira_get_issue', { issueKey: state.bugKey });
+      assert.equal(slim.json.comments, undefined);
+      const full = await server.ok('jira_get_issue', { issueKey: state.bugKey, include: ['comments'] });
+      assert.match(JSON.stringify(full.json.comments), /visible only with include/);
     });
 
     it('field not on screen gives an actionable error', async () => {
