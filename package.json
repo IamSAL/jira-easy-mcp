@@ -14,7 +14,7 @@
   ],
   "scripts": {
     "build": "tsc",
-    "clean": "rm -rf dist",
+    "clean": "node -e \"fs.rmSync('dist', { recursive: true, force: true })\"",
     "prepublishOnly": "pnpm run clean && pnpm run build",
     "start": "npx @modelcontextprotocol/inspector node dist/index.js",
     "dev": "tsc --watch",
@@ -22,7 +22,8 @@
     "lint:fix": "eslint src --ext .ts --fix",
     "typecheck": "tsc --noEmit",
     "test": "tsc && node --test 'test/*.test.mjs'",
-    "reload-mcp": "pnpm run prepublishOnly && node dist/index.js"
+    "reload-mcp": "pnpm run prepublishOnly && node dist/index.js",
+    "prepare": "npm run build"
   },
   "keywords": [
     "mcp",
