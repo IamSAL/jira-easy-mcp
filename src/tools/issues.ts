@@ -6,7 +6,8 @@
 
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
-import { jiraGet, jiraPost, jiraPut, jiraDelete } from '../client.js';
+import { zBoolean } from './schema.js';
+import { jiraGet, jiraPost, jiraPut, jiraDelete, pathSegment } from '../client.js';
 import { formatResponse, getConfig } from '../config.js';
 import { startToolCall, endToolCall, failToolCall } from '../logger.js';
 import { toSimplifiedIssue, toSimplifiedSearchResult } from '../transformers.js';
@@ -58,11 +59,13 @@ export const searchIssues = async (
   startAt: number = 0,
   fields?: string[]
 ): Promise<SimplifiedSearchResult> => {
+  // Compact by default: with descriptions, comments and worklogs, 50 issues
+  // can exceed 50k tokens, past what MCP clients accept from one tool call
+  // (Claude Code truncates at 25k). jira_get_issue returns the full detail.
   const defaultFields = [
     'summary', 'status', 'priority', 'issuetype', 'assignee', 'reporter',
-    'description', 'labels', 'components', 'fixVersions', 'resolution',
-    'created', 'updated', 'duedate', 'parent', 'subtasks', 'issuelinks',
-    'comment', 'worklog', 'attachment', 'timetracking'
+    'labels', 'components', 'fixVersions', 'resolution',
+    'created', 'updated', 'duedate', 'parent',
   ];
 
   const params = new URLSearchParams({
@@ -98,7 +101,7 @@ export const getIssue = async (
     params.set('expand', expand.join(','));
   }
 
-  const issue = await jiraGet<JiraIssue>(`/issue/${issueKey}?${params}`);
+  const issue = await jiraGet<JiraIssue>(`/issue/${pathSegment(issueKey)}?${params}`);
   return toSimplifiedIssue(issue);
 };
 
@@ -205,7 +208,7 @@ export const updateIssue = async (
     Object.assign(fields, updates.customFields);
   }
 
-  await jiraPut(`/issue/${issueKey}`, { fields });
+  await jiraPut(`/issue/${pathSegment(issueKey)}`, { fields });
 };
 
 /**
@@ -216,7 +219,7 @@ export const deleteIssue = async (
   deleteSubtasks: boolean = false
 ): Promise<void> => {
   const params = deleteSubtasks ? '?deleteSubtasks=true' : '';
-  await jiraDelete(`/issue/${issueKey}${params}`);
+  await jiraDelete(`/issue/${pathSegment(issueKey)}${params}`);
 };
 
 /**
@@ -234,7 +237,7 @@ export const getIssueChangelog = async (
     maxResults: maxResults.toString(),
   });
 
-  const issue = await jiraGet<JiraIssue>(`/issue/${issueKey}?${params}`);
+  const issue = await jiraGet<JiraIssue>(`/issue/${pathSegment(issueKey)}?${params}`);
   return issue.changelog;
 };
 
@@ -245,7 +248,8 @@ export const registerIssueTools = (server: McpServer): void => {
   // Search issues by JQL
   server.tool(
     "jira_search",
-    'Search for Jira issues using JQL (Jira Query Language). Use this to find issues by project, status, assignee, labels, sprint, or any combination of criteria. Returns issue key, summary, status, assignee, and other fields. Common JQL examples: "project = KP", "assignee = currentUser()", "status = "In Progress"", "sprint in openSprints()", "labels = bug AND priority = High". if its relevant for user to get a shareable link for the current search, user can get a link like https://konaway.konai.com/issues/?jql=project%20%3D%20KP%20AND%20issuetype%20%3D%20%22Portal%20Bug%22%20AND%20resolution%20%3D%20Unresolved%20ORDER%20BY%20priority%20DESC%2C%20updated%20DESC with the filters applied for current search.',
+    'Search for Jira issues using JQL (Jira Query Language). Use this to find issues by project, status, assignee, labels, sprint, or any combination of criteria. Returns a compact summary per issue (key, summary, status, type, priority, assignee, reporter, labels, dates); use jira_get_issue for the description, comments and worklogs, or pass `fields` to include specific fields. Common JQL examples: "project = KP", "assignee = currentUser()", "status = \'In Progress\'", "sprint in openSprints()", "labels = bug AND priority = High". For a shareable browser link to the same search, use jira_generate_filter_url.',
+
     {
       jql: z
         .string()
@@ -253,20 +257,20 @@ export const registerIssueTools = (server: McpServer): void => {
           'JQL query string. Examples: "project = KP AND status = Open", "assignee = currentUser() ORDER BY updated DESC", "sprint in openSprints() AND status != Done"'
         ),
       maxResults: z
-        .number()
+        .coerce.number()
         .min(1)
         .max(100)
         .default(50)
         .describe("Maximum number of results to return (1-100)"),
       startAt: z
-        .number()
+        .coerce.number()
         .min(0)
         .default(0)
         .describe("Starting index for pagination"),
       fields: z
         .array(z.string())
         .optional()
-        .describe("Specific fields to return (optional)"),
+        .describe('Jira field IDs to return instead of the compact default (e.g. ["summary", "description", "comment", "customfield_10010"])'),
     },
     async (args) => {
       const callLog = startToolCall("jira_search", args);
@@ -394,7 +398,7 @@ export const registerIssueTools = (server: McpServer): void => {
     'Permanently delete a Jira issue. WARNING: This action cannot be undone. If the issue has subtasks, you must set deleteSubtasks=true or the deletion will fail. Consider transitioning to a "Cancelled" or "Won\'t Do" status instead of deleting.',
     {
       issueKey: z.string().describe('Issue key to delete (e.g., KP-123)'),
-      deleteSubtasks: z.boolean().default(false).describe('Set to true to also delete all subtasks. Required if the issue has subtasks.'),
+      deleteSubtasks: zBoolean().default(false).describe('Set to true to also delete all subtasks. Required if the issue has subtasks.'),
     },
     async (args) => {
       const callLog = startToolCall('jira_delete_issue', args);
@@ -416,8 +420,8 @@ export const registerIssueTools = (server: McpServer): void => {
     'Get the complete change history of a Jira issue - shows who changed what field, when, and from/to values. Useful for auditing, understanding how an issue evolved, or finding when a specific change was made.',
     {
       issueKey: z.string().describe('Issue key to get history for (e.g., KP-123)'),
-      startAt: z.number().min(0).default(0).describe('Starting index for pagination'),
-      maxResults: z.number().min(1).max(100).default(100).describe('Maximum number of results'),
+      startAt: z.coerce.number().min(0).default(0).describe('Starting index for pagination'),
+      maxResults: z.coerce.number().min(1).max(100).default(100).describe('Maximum number of results'),
     },
     async (args) => {
       const callLog = startToolCall('jira_get_changelog', args);

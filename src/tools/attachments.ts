@@ -9,7 +9,7 @@ import { basename, isAbsolute } from 'node:path';
 import { lookup } from 'mime-types';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
-import { jiraDownloadAttachment, jiraGet, jiraPostForm } from '../client.js';
+import { jiraDownloadAttachment, jiraGet, jiraPostForm, pathSegment } from '../client.js';
 import { formatResponse } from '../config.js';
 import { startToolCall, endToolCall, failToolCall } from '../logger.js';
 import type { JiraAttachment, JiraIssue } from '../types.js';
@@ -48,7 +48,7 @@ export const getIssueImages = async (
   maxImages: number = 5
 ): Promise<JiraIssueImagesResult> => {
   const params = new URLSearchParams({ fields: 'attachment' });
-  const issue = await jiraGet<JiraIssue>(`/issue/${encodeURIComponent(issueKey)}?${params}`);
+  const issue = await jiraGet<JiraIssue>(`/issue/${pathSegment(issueKey)}?${params}`);
   const allAttachments = issue.fields.attachment || [];
   let attachments: JiraAttachment[];
 
@@ -133,7 +133,7 @@ export const uploadAttachment = async (
   formData.append('file', new Blob([new Uint8Array(content)], { type: mimeType }), filename);
 
   return jiraPostForm<JiraAttachment[]>(
-    `/issue/${encodeURIComponent(issueKey)}/attachments`,
+    `/issue/${pathSegment(issueKey)}/attachments`,
     formData
   );
 };
@@ -149,7 +149,7 @@ export const registerAttachmentTools = (server: McpServer): void => {
     {
       issueKey: z.string().describe('Issue key (e.g., KP-123)'),
       attachmentId: z.string().optional().describe('Specific attachment ID to retrieve (from jira_get_issue attachments)'),
-      maxImages: z.number().min(1).max(10).default(5).describe('Maximum images to return when attachmentId is omitted'),
+      maxImages: z.coerce.number().min(1).max(10).default(5).describe('Maximum images to return when attachmentId is omitted'),
     },
     async (args) => {
       const callLog = startToolCall('jira_get_issue_images', args);

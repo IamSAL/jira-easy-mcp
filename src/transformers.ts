@@ -62,7 +62,7 @@ export const toSimplifiedIssue = (issue: JiraIssue): SimplifiedIssue => {
   const parent = fields.parent ? {
     key: fields.parent.key,
     summary: fields.parent.fields.summary,
-    type: fields.parent.fields.issuetype.name,
+    type: fields.parent.fields.issuetype?.name,
   } : undefined;
 
   // Transform comments
@@ -99,10 +99,11 @@ export const toSimplifiedIssue = (issue: JiraIssue): SimplifiedIssue => {
     id: issue.id,
     self: issue.self,
     summary: fields.summary,
-    status: fields.status.name,
-    statusCategory: fields.status.statusCategory?.name,
+    // status/issuetype are absent when the caller restricts `fields`
+    status: fields.status?.name,
+    statusCategory: fields.status?.statusCategory?.name,
     priority: fields.priority?.name,
-    type: fields.issuetype.name,
+    type: fields.issuetype?.name,
     assignee: fields.assignee?.displayName,
     assigneeEmail: fields.assignee?.emailAddress,
     reporter: fields.reporter?.displayName,

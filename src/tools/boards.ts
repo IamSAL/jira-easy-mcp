@@ -82,8 +82,8 @@ export const registerBoardTools = (server: McpServer): void => {
     {
       projectKey: z.string().optional().describe('Filter boards by project key (e.g., KP)'),
       type: z.enum(['scrum', 'kanban']).optional().describe('Filter by board type: scrum (has sprints) or kanban (continuous flow)'),
-      startAt: z.number().min(0).default(0).describe('Starting index for pagination'),
-      maxResults: z.number().min(1).max(100).default(50).describe('Maximum number of results'),
+      startAt: z.coerce.number().min(0).default(0).describe('Starting index for pagination'),
+      maxResults: z.coerce.number().min(1).max(100).default(50).describe('Maximum number of results'),
     },
     async (args) => {
       const callLog = startToolCall('jira_get_boards', args);
@@ -105,10 +105,10 @@ export const registerBoardTools = (server: McpServer): void => {
     'jira_get_board_issues',
     'Get all issues visible on a specific Jira Agile board. Returns issues in the board\'s backlog and active sprints. Can combine with JQL for additional filtering. Use jira_get_boards first to find the board ID.',
     {
-      boardId: z.number().describe('Board ID (get from jira_get_boards)'),
+      boardId: z.coerce.number().describe('Board ID (get from jira_get_boards)'),
       jql: z.string().optional().describe('Additional JQL filter to narrow results (e.g., "assignee = currentUser()")'),
-      startAt: z.number().min(0).default(0).describe('Starting index for pagination'),
-      maxResults: z.number().min(1).max(100).default(50).describe('Maximum number of results'),
+      startAt: z.coerce.number().min(0).default(0).describe('Starting index for pagination'),
+      maxResults: z.coerce.number().min(1).max(100).default(50).describe('Maximum number of results'),
     },
     async (args) => {
       const callLog = startToolCall('jira_get_board_issues', args);

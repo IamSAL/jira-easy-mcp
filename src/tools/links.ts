@@ -6,7 +6,7 @@
 
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
-import { jiraGet, jiraPost, jiraDelete } from '../client.js';
+import { jiraGet, jiraPost, jiraDelete, pathSegment } from '../client.js';
 import { formatResponse } from '../config.js';
 import { startToolCall, endToolCall, failToolCall } from '../logger.js';
 import type { JiraIssueLinkType } from '../types.js';
@@ -49,7 +49,7 @@ export const createIssueLink = async (
  * Delete an issue link.
  */
 export const deleteIssueLink = async (linkId: string): Promise<void> => {
-  await jiraDelete(`/issueLink/${linkId}`);
+  await jiraDelete(`/issueLink/${pathSegment(linkId)}`);
 };
 
 /**
@@ -131,14 +131,14 @@ export const createRemoteLink = async (
     };
   }
 
-  return jiraPost<RemoteLink>(`/issue/${issueKey}/remotelink`, body);
+  return jiraPost<RemoteLink>(`/issue/${pathSegment(issueKey)}/remotelink`, body);
 };
 
 /**
  * Get remote links for an issue.
  */
 export const getRemoteLinks = async (issueKey: string): Promise<RemoteLink[]> => {
-  return jiraGet<RemoteLink[]>(`/issue/${issueKey}/remotelink`);
+  return jiraGet<RemoteLink[]>(`/issue/${pathSegment(issueKey)}/remotelink`);
 };
 
 /**

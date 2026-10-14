@@ -5,29 +5,9 @@
  * retry logic, timeout handling, and SSL configuration.
  */
 
-import https from 'node:https';
 import { getConfig } from './config.js';
-import { logApiRequest, logApiResponse, logRetry, warn } from './logger.js';
+import { logApiRequest, logApiResponse, logRetry } from './logger.js';
 import type { JiraApiError } from './types.js';
-
-// Custom HTTPS agent for SSL configuration (lazy initialized)
-let httpsAgent: https.Agent | null = null;
-
-/**
- * Get or create the HTTPS agent with SSL configuration.
- */
-const getHttpsAgent = (): https.Agent => {
-  if (!httpsAgent) {
-    const { sslVerify } = getConfig();
-    httpsAgent = new https.Agent({
-      rejectUnauthorized: sslVerify,
-    });
-    if (!sslVerify) {
-      warn('SSL verification disabled - connections may be insecure');
-    }
-  }
-  return httpsAgent;
-};
 
 /**
  * Build Basic Auth header from credentials.
@@ -73,7 +53,14 @@ const parseErrorResponse = async (response: Response): Promise<string> => {
       ];
       return messages.length > 0 ? messages.join('; ') : `HTTP ${response.status}`;
     }
-    return await response.text() || `HTTP ${response.status}`;
+    const text = await response.text();
+    if (/<html|<!doctype/i.test(text)) {
+      // Tomcat, proxies and login/CAPTCHA pages answer with HTML; keep just the gist
+      const message = text.match(/<b>Message<\/b>\s*([^<]+)/i)?.[1]
+        ?? text.match(/<title>([^<]+)<\/title>/i)?.[1];
+      return message ? `HTTP ${response.status}: ${message.trim()}` : `HTTP ${response.status}`;
+    }
+    return text.slice(0, 500) || `HTTP ${response.status}`;
   } catch {
     return `HTTP ${response.status}`;
   }
@@ -122,9 +109,12 @@ export const jiraFetch = async <T = unknown>(
   endpoint: string,
   options: RequestInit = {}
 ): Promise<T> => {
-  const { baseUrl, timeout, retryCount, retryDelay, sslVerify } = getConfig();
+  const { baseUrl, timeout, retryCount, retryDelay } = getConfig();
   const url = `${baseUrl}/rest/api/2${endpoint}`;
   const method = options.method || 'GET';
+  // A POST that timed out or hit a 5xx may still have been applied (e.g. a
+  // created issue or link); retrying it would duplicate the write.
+  const canRetry = (status?: number) => method !== 'POST' || status === 429;
 
   const headers: Record<string, string> = {
     'Accept': 'application/json',
@@ -138,16 +128,11 @@ export const jiraFetch = async <T = unknown>(
   }
 
   // Build fetch options with SSL agent for Node.js
-  const fetchOptions: RequestInit & { dispatcher?: unknown } = {
+  const fetchOptions: RequestInit = {
     ...options,
     headers,
   };
 
-  // Add SSL agent if we need to skip verification
-  if (!sslVerify && url.startsWith('https://')) {
-    // @ts-expect-error - Node.js fetch supports agent option
-    fetchOptions.agent = getHttpsAgent();
-  }
 
   let lastError: Error | null = null;
   
@@ -172,7 +157,7 @@ export const jiraFetch = async <T = unknown>(
         const errorText = await parseErrorResponse(response);
         
         // Check if we should retry
-        if (isRetryableError(response.status) && attempt < retryCount) {
+        if (isRetryableError(response.status) && canRetry(response.status) && attempt < retryCount) {
           const delay = calculateBackoff(attempt, retryDelay);
           logRetry(attempt + 1, retryCount, `HTTP ${response.status}`, delay);
           await sleep(delay);
@@ -186,8 +171,12 @@ export const jiraFetch = async <T = unknown>(
           );
         }
         if (response.status === 403) {
+          // Jira sets this header when too many failed logins triggered a CAPTCHA
+          const deniedReason = response.headers.get('x-authentication-denied-reason') || '';
           throw new JiraApiException(
-            'Access forbidden. CAPTCHA may be triggered - log in via browser first, or check permissions.',
+            /captcha/i.test(deniedReason)
+              ? 'Login blocked by CAPTCHA after failed attempts. Log in to Jira in a browser once to clear it, then retry.'
+              : `Access forbidden: ${errorText}`,
             response.status
           );
         }
@@ -222,7 +211,7 @@ export const jiraFetch = async <T = unknown>(
           0
         );
         
-        if (attempt < retryCount) {
+        if (canRetry() && attempt < retryCount) {
           const delay = calculateBackoff(attempt, retryDelay);
           logRetry(attempt + 1, retryCount, 'timeout', delay);
           await sleep(delay);
@@ -232,7 +221,7 @@ export const jiraFetch = async <T = unknown>(
       }
       
       // Handle network errors (retryable)
-      if (err instanceof TypeError && attempt < retryCount) {
+      if (err instanceof TypeError && canRetry() && attempt < retryCount) {
         const delay = calculateBackoff(attempt, retryDelay);
         logRetry(attempt + 1, retryCount, err.message, delay);
         await sleep(delay);
@@ -257,7 +246,7 @@ export const jiraDownloadAttachment = async (
   contentUrl: string,
   maxBytes: number
 ): Promise<JiraBinaryResponse> => {
-  const { baseUrl, timeout, sslVerify } = getConfig();
+  const { baseUrl, timeout } = getConfig();
   const base = new URL(baseUrl);
   const url = new URL(contentUrl, `${baseUrl}/`);
   const contextPath = base.pathname === '/' ? '' : base.pathname.replace(/\/$/, '');
@@ -272,7 +261,7 @@ export const jiraDownloadAttachment = async (
 
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), timeout);
-  const fetchOptions: RequestInit & { dispatcher?: unknown } = {
+  const fetchOptions: RequestInit = {
     method: 'GET',
     redirect: 'manual',
     headers: {
@@ -282,10 +271,6 @@ export const jiraDownloadAttachment = async (
     signal: controller.signal,
   };
 
-  if (!sslVerify && url.protocol === 'https:') {
-    // @ts-expect-error - Node.js fetch supports agent option
-    fetchOptions.agent = getHttpsAgent();
-  }
 
   try {
     logApiRequest('GET', url.toString());
@@ -359,9 +344,12 @@ export const jiraAgileFetch = async <T = unknown>(
   endpoint: string,
   options: RequestInit = {}
 ): Promise<T> => {
-  const { baseUrl, timeout, retryCount, retryDelay, sslVerify } = getConfig();
+  const { baseUrl, timeout, retryCount, retryDelay } = getConfig();
   const url = `${baseUrl}/rest/agile/1.0${endpoint}`;
   const method = options.method || 'GET';
+  // A POST that timed out or hit a 5xx may still have been applied (e.g. a
+  // created issue or link); retrying it would duplicate the write.
+  const canRetry = (status?: number) => method !== 'POST' || status === 429;
 
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
@@ -371,16 +359,11 @@ export const jiraAgileFetch = async <T = unknown>(
   };
 
   // Build fetch options with SSL agent for Node.js
-  const fetchOptions: RequestInit & { dispatcher?: unknown } = {
+  const fetchOptions: RequestInit = {
     ...options,
     headers,
   };
 
-  // Add SSL agent if we need to skip verification
-  if (!sslVerify && url.startsWith('https://')) {
-    // @ts-expect-error - Node.js fetch supports agent option
-    fetchOptions.agent = getHttpsAgent();
-  }
 
   let lastError: Error | null = null;
   
@@ -405,7 +388,7 @@ export const jiraAgileFetch = async <T = unknown>(
         const errorText = await parseErrorResponse(response);
         
         // Check if we should retry
-        if (isRetryableError(response.status) && attempt < retryCount) {
+        if (isRetryableError(response.status) && canRetry(response.status) && attempt < retryCount) {
           const delay = calculateBackoff(attempt, retryDelay);
           logRetry(attempt + 1, retryCount, `HTTP ${response.status}`, delay);
           await sleep(delay);
@@ -429,7 +412,7 @@ export const jiraAgileFetch = async <T = unknown>(
           0
         );
         
-        if (attempt < retryCount) {
+        if (canRetry() && attempt < retryCount) {
           const delay = calculateBackoff(attempt, retryDelay);
           logRetry(attempt + 1, retryCount, 'timeout', delay);
           await sleep(delay);
@@ -438,7 +421,7 @@ export const jiraAgileFetch = async <T = unknown>(
         throw lastError;
       }
       
-      if (err instanceof TypeError && attempt < retryCount) {
+      if (err instanceof TypeError && canRetry() && attempt < retryCount) {
         const delay = calculateBackoff(attempt, retryDelay);
         logRetry(attempt + 1, retryCount, err.message, delay);
         await sleep(delay);
@@ -452,6 +435,14 @@ export const jiraAgileFetch = async <T = unknown>(
 
   throw lastError || new Error('Request failed after retries');
 };
+
+/**
+ * Encode a caller-supplied value (issue key, comment ID, ...) as one URL path
+ * segment. Trims whitespace agents sometimes add, and stops values like
+ * "../myself" from reaching other endpoints.
+ */
+export const pathSegment = (value: string | number): string =>
+  encodeURIComponent(String(value).trim());
 
 /**
  * Build URL query string from parameters.

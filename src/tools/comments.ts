@@ -6,7 +6,7 @@
 
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
-import { jiraGet, jiraPost, jiraPut, jiraDelete } from '../client.js';
+import { jiraGet, jiraPost, jiraPut, jiraDelete, pathSegment } from '../client.js';
 import { formatResponse } from '../config.js';
 import { startToolCall, endToolCall, failToolCall } from '../logger.js';
 import type { JiraComment, CreateCommentResponse } from '../types.js';
@@ -31,7 +31,7 @@ export const getComments = async (
     maxResults: maxResults.toString(),
   });
 
-  return jiraGet<CommentsResult>(`/issue/${issueKey}/comment?${params}`);
+  return jiraGet<CommentsResult>(`/issue/${pathSegment(issueKey)}/comment?${params}`);
 };
 
 /**
@@ -41,7 +41,7 @@ export const addComment = async (
   issueKey: string,
   body: string
 ): Promise<CreateCommentResponse> => {
-  return jiraPost<CreateCommentResponse>(`/issue/${issueKey}/comment`, { body });
+  return jiraPost<CreateCommentResponse>(`/issue/${pathSegment(issueKey)}/comment`, { body });
 };
 
 /**
@@ -52,7 +52,7 @@ export const updateComment = async (
   commentId: string,
   body: string
 ): Promise<JiraComment> => {
-  return jiraPut<JiraComment>(`/issue/${issueKey}/comment/${commentId}`, { body });
+  return jiraPut<JiraComment>(`/issue/${pathSegment(issueKey)}/comment/${pathSegment(commentId)}`, { body });
 };
 
 /**
@@ -62,7 +62,7 @@ export const deleteComment = async (
   issueKey: string,
   commentId: string
 ): Promise<void> => {
-  await jiraDelete(`/issue/${issueKey}/comment/${commentId}`);
+  await jiraDelete(`/issue/${pathSegment(issueKey)}/comment/${pathSegment(commentId)}`);
 };
 
 /**
@@ -75,8 +75,8 @@ export const registerCommentTools = (server: McpServer): void => {
     'Retrieve all comments on a Jira issue. Returns comment text, author, and timestamps. Use this to see discussion history, feedback, or notes left by team members on an issue.',
     {
       issueKey: z.string().describe('Issue key to get comments for (e.g., KP-123)'),
-      startAt: z.number().min(0).default(0).describe('Starting index for pagination'),
-      maxResults: z.number().min(1).max(100).default(50).describe('Maximum number of comments to return'),
+      startAt: z.coerce.number().min(0).default(0).describe('Starting index for pagination'),
+      maxResults: z.coerce.number().min(1).max(100).default(50).describe('Maximum number of comments to return'),
     },
     async (args) => {
       const callLog = startToolCall('jira_get_comments', args);

@@ -112,6 +112,10 @@ export const getConfig = (): JiraConfig => {
   // Optional: SSL verification (default: true)
   const sslVerifyStr = process.env.JIRA_SSL_VERIFY?.toLowerCase();
   const sslVerify = sslVerifyStr !== 'false' && sslVerifyStr !== '0';
+  if (!sslVerify) {
+    // Node's fetch has no per-request TLS option; this process only talks to Jira
+    process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
+  }
 
   // Optional: Log level (default: INFO)
   const logLevelStr = process.env.JIRA_LOG_LEVEL?.toUpperCase() as LogLevel | undefined;
@@ -193,7 +197,7 @@ const toToon = (obj: unknown, indent: number = 0): string => {
     if (obj.every(item => typeof item === 'string' || typeof item === 'number')) {
       return `[${obj.join(', ')}]`;
     }
-    return obj.map((item, i) => `${spaces}- ${toToon(item, indent + 1).trimStart()}`).join('\n');
+    return obj.map(item => `${spaces}- ${toToon(item, indent + 1).trimStart()}`).join('\n');
   }
   
   if (typeof obj === 'object') {

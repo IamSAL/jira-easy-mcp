@@ -6,7 +6,7 @@
 
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
-import { jiraAgileGet, jiraAgilePost, jiraAgilePut } from '../client.js';
+import { jiraAgileGet, jiraAgilePost } from '../client.js';
 import { formatResponse } from '../config.js';
 import { startToolCall, endToolCall, failToolCall } from '../logger.js';
 import { toSimplifiedSprint, toSimplifiedSearchResult } from '../transformers.js';
@@ -107,7 +107,8 @@ export const updateSprint = async (
   if (updates.endDate) body.endDate = updates.endDate;
   if (updates.state) body.state = updates.state;
 
-  return jiraAgilePut<JiraSprint>(`/sprint/${sprintId}`, body);
+  // POST is a partial update; PUT replaces the sprint and requires every field
+  return jiraAgilePost<JiraSprint>(`/sprint/${sprintId}`, body);
 };
 
 /**
@@ -131,10 +132,10 @@ export const registerSprintTools = (server: McpServer): void => {
     'jira_get_sprints',
     'List all sprints for a Scrum board. Sprints are time-boxed iterations for completing work. Returns sprint names, goals, dates, and states. Use jira_get_boards first to find the board ID. Filter by state to see only active, future, or closed sprints.',
     {
-      boardId: z.number().describe('Scrum board ID (get from jira_get_boards with type=scrum)'),
+      boardId: z.coerce.number().describe('Scrum board ID (get from jira_get_boards with type=scrum)'),
       state: z.enum(['active', 'future', 'closed']).optional().describe('Filter by sprint state: active (current), future (planned), closed (completed)'),
-      startAt: z.number().min(0).default(0).describe('Starting index for pagination'),
-      maxResults: z.number().min(1).max(100).default(50).describe('Maximum number of results'),
+      startAt: z.coerce.number().min(0).default(0).describe('Starting index for pagination'),
+      maxResults: z.coerce.number().min(1).max(100).default(50).describe('Maximum number of results'),
     },
     async (args) => {
       const callLog = startToolCall('jira_get_sprints', args);
@@ -156,10 +157,10 @@ export const registerSprintTools = (server: McpServer): void => {
     'jira_get_sprint_issues',
     'Get all issues assigned to a specific sprint. Use this to see what work is planned or in progress for a sprint. Get sprint IDs from jira_get_sprints. Can add JQL filter for additional narrowing.',
     {
-      sprintId: z.number().describe('Sprint ID (get from jira_get_sprints)'),
-      jql: z.string().optional().describe('Additional JQL filter (e.g., "status = \"In Progress\"", "assignee = currentUser()")'),
-      startAt: z.number().min(0).default(0).describe('Starting index for pagination'),
-      maxResults: z.number().min(1).max(100).default(50).describe('Maximum number of results'),
+      sprintId: z.coerce.number().describe('Sprint ID (get from jira_get_sprints)'),
+      jql: z.string().optional().describe('Additional JQL filter (e.g., "status = \'In Progress\'", "assignee = currentUser()")'),
+      startAt: z.coerce.number().min(0).default(0).describe('Starting index for pagination'),
+      maxResults: z.coerce.number().min(1).max(100).default(50).describe('Maximum number of results'),
     },
     async (args) => {
       const callLog = startToolCall('jira_get_sprint_issues', args);
@@ -182,7 +183,7 @@ export const registerSprintTools = (server: McpServer): void => {
     'Create a new sprint on a Scrum board for planning upcoming work. New sprints start in "future" state. Use jira_move_issues_to_sprint to add issues after creation. Dates should be in ISO format.',
     {
       name: z.string().describe('Sprint name (e.g., "Sprint 5", "January Sprint")'),
-      boardId: z.number().describe('Scrum board ID where sprint will be created (get from jira_get_boards)'),
+      boardId: z.coerce.number().describe('Scrum board ID where sprint will be created (get from jira_get_boards)'),
       goal: z.string().optional().describe('Sprint goal - what the team aims to achieve'),
       startDate: z.string().optional().describe('Sprint start date (ISO format: 2024-01-15T09:00:00.000Z)'),
       endDate: z.string().optional().describe('Sprint end date (ISO format: 2024-01-29T17:00:00.000Z)'),
@@ -208,7 +209,7 @@ export const registerSprintTools = (server: McpServer): void => {
     'jira_update_sprint',
     'Modify an existing sprint\'s name, goal, dates, or state. Change state to "active" to start a sprint, "closed" to complete it. Only fields you specify will be updated.',
     {
-      sprintId: z.number().describe('Sprint ID to update (get from jira_get_sprints)'),
+      sprintId: z.coerce.number().describe('Sprint ID to update (get from jira_get_sprints)'),
       name: z.string().optional().describe('New sprint name'),
       goal: z.string().optional().describe('New sprint goal'),
       startDate: z.string().optional().describe('New start date (ISO format)'),
@@ -236,7 +237,7 @@ export const registerSprintTools = (server: McpServer): void => {
     'jira_move_issues_to_sprint',
     'Add/move one or more issues into a sprint for sprint planning. Issues will be removed from their current sprint (if any) and added to the specified sprint. Get sprint ID from jira_get_sprints.',
     {
-      sprintId: z.number().describe('Target sprint ID (get from jira_get_sprints)'),
+      sprintId: z.coerce.number().describe('Target sprint ID (get from jira_get_sprints)'),
       issueKeys: z.array(z.string()).describe('Array of issue keys to move (e.g., ["KP-1", "KP-2", "KP-3"])'),
     },
     async (args) => {

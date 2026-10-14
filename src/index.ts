@@ -23,6 +23,7 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { initializeConfig, validateConfig, getConfig } from './config.js';
 import { info, error as logError } from './logger.js';
+import { enforceProjectFilter } from './projectFilter.js';
 import {
   registerIssueTools,
   registerCommentTools,
@@ -43,7 +44,8 @@ const server = new McpServer({
   version: '1.1.0',
 });
 
-// Register all tools
+// Register all tools (JIRA_PROJECTS_FILTER is applied to every tool's arguments)
+enforceProjectFilter(server);
 registerIssueTools(server);
 registerCommentTools(server);
 registerTransitionTools(server);

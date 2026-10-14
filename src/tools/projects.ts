@@ -6,7 +6,8 @@
 
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
-import { jiraGet, jiraPost } from '../client.js';
+import { zBoolean } from './schema.js';
+import { jiraGet, jiraPost, pathSegment } from '../client.js';
 import { toSimplifiedProject } from '../transformers.js';
 import { getConfig, formatResponse } from '../config.js';
 import { startToolCall, endToolCall, failToolCall } from '../logger.js';
@@ -32,7 +33,7 @@ export const getAllProjects = async (): Promise<SimplifiedProject[]> => {
  * Get a single project.
  */
 export const getProject = async (projectKey: string): Promise<SimplifiedProject> => {
-  const project = await jiraGet<JiraProject>(`/project/${projectKey}`);
+  const project = await jiraGet<JiraProject>(`/project/${pathSegment(projectKey)}`);
   return toSimplifiedProject(project);
 };
 
@@ -40,7 +41,7 @@ export const getProject = async (projectKey: string): Promise<SimplifiedProject>
  * Get project versions.
  */
 export const getProjectVersions = async (projectKey: string): Promise<JiraVersion[]> => {
-  return jiraGet<JiraVersion[]>(`/project/${projectKey}/versions`);
+  return jiraGet<JiraVersion[]>(`/project/${pathSegment(projectKey)}/versions`);
 };
 
 /**
@@ -161,7 +162,7 @@ export const registerProjectTools = (server: McpServer): void => {
       description: z.string().optional().describe('Description of what this version/release includes'),
       releaseDate: z.string().optional().describe('Target or actual release date (YYYY-MM-DD format)'),
       startDate: z.string().optional().describe('Development start date (YYYY-MM-DD format)'),
-      released: z.boolean().optional().describe('Set to true if this version has already been released'),
+      released: zBoolean().optional().describe('Set to true if this version has already been released'),
     },
     async (args) => {
       const callLog = startToolCall('jira_create_version', args);
