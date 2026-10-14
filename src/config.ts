@@ -1,13 +1,70 @@
 /**
  * Jira MCP Server - Configuration Module
  * 
- * Handles environment variable loading and configuration management.
+ * Handles environment variable loading, OS credential store fallback,
+ * and configuration management.
  */
 
 import type { JiraConfig, ResponseFormat, LogLevel } from './types.js';
 import { setLogLevel } from './logger.js';
+import { findWindowsCredential, type StoredCredential } from './windows-credentials.js';
+
+/** Service name (macOS Keychain / libsecret) or target name (Windows) for stored credentials. */
+const CREDENTIAL_SERVICE = 'JiraMCP';
 
 let cachedConfig: JiraConfig | null = null;
+let storedCredential: StoredCredential | null = null;
+
+/**
+ * Read credentials for CREDENTIAL_SERVICE from the OS credential store.
+ * keytar is an optional native dependency; if it failed to install, this throws.
+ */
+const findStoredCredentials = async (): Promise<StoredCredential[]> => {
+  if (process.platform === 'win32') {
+    const credential = await findWindowsCredential(CREDENTIAL_SERVICE);
+    return credential ? [credential] : [];
+  }
+  const { default: keytar } = await import('keytar');
+  return keytar.findCredentials(CREDENTIAL_SERVICE);
+};
+
+/**
+ * Resolve credentials before the first getConfig() call.
+ * JIRA_USERNAME + JIRA_PASSWORD take precedence; the OS credential store is
+ * only consulted when they are not both set.
+ */
+export const initializeConfig = async (): Promise<void> => {
+  const { JIRA_USERNAME: envUsername, JIRA_PASSWORD: envPassword } = process.env;
+  if (envUsername && envPassword) {
+    return;
+  }
+
+  let credentials: StoredCredential[];
+  try {
+    credentials = await findStoredCredentials();
+  } catch (err) {
+    throw new Error(
+      `Unable to read the "${CREDENTIAL_SERVICE}" OS credential store (${err instanceof Error ? err.message : String(err)}). Set JIRA_USERNAME and JIRA_PASSWORD instead.`
+    );
+  }
+
+  const matching = envUsername
+    ? credentials.filter(({ account }) => account === envUsername)
+    : credentials;
+
+  if (matching.length > 1) {
+    throw new Error(
+      `Multiple Jira credentials found for service "${CREDENTIAL_SERVICE}". Set JIRA_USERNAME to select an account or remove extra credentials.`
+    );
+  }
+  if (matching.length === 0) {
+    throw new Error(
+      `No Jira credentials found. Set JIRA_USERNAME and JIRA_PASSWORD, or store a credential under "${CREDENTIAL_SERVICE}": on macOS a Keychain item with service "${CREDENTIAL_SERVICE}"; on Windows a Generic Credential (cmdkey /generic:${CREDENTIAL_SERVICE} /user:<username> /pass), since cmdkey /add creates a Domain credential whose password cannot be read.`
+    );
+  }
+
+  storedCredential = matching[0];
+};
 
 /**
  * Get Jira configuration from environment variables.
@@ -23,12 +80,12 @@ export const getConfig = (): JiraConfig => {
     throw new Error('Missing JIRA_BASE_URL environment variable');
   }
   
-  const username = process.env.JIRA_USERNAME;
+  const username = storedCredential?.account ?? process.env.JIRA_USERNAME;
   if (!username) {
     throw new Error('Missing JIRA_USERNAME environment variable');
   }
 
-  const password = process.env.JIRA_PASSWORD;
+  const password = storedCredential?.password ?? process.env.JIRA_PASSWORD;
   if (!password) {
     throw new Error('Missing JIRA_PASSWORD environment variable');
   }

@@ -8,6 +8,7 @@
  *   JIRA_BASE_URL          - Jira instance URL (e.g., https://your-jira.com)
  *   JIRA_USERNAME          - Jira username
  *   JIRA_PASSWORD          - Jira password (or API token for Jira Cloud)
+ *                            (optional if stored in the OS credential store as "JiraMCP")
  *   JIRA_PROJECTS_FILTER   - Optional: Comma-separated project keys to limit access
  *   JIRA_RESPONSE_FORMAT   - Optional: Response format - JSON (default) or TOON
  *   JIRA_TIMEOUT           - Optional: Request timeout in ms (default: 30000)
@@ -20,7 +21,7 @@
 
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
-import { validateConfig, getConfig } from './config.js';
+import { initializeConfig, validateConfig, getConfig } from './config.js';
 import { info, error as logError } from './logger.js';
 import {
   registerIssueTools,
@@ -35,14 +36,6 @@ import {
   registerFieldTools,
   registerAttachmentTools,
 } from './tools/index.js';
-
-// Validate configuration early
-try {
-  validateConfig();
-} catch (err) {
-  logError('Configuration error', { error: err instanceof Error ? err.message : String(err) });
-  process.exit(1);
-}
 
 // Create MCP server
 const server = new McpServer({
@@ -65,6 +58,14 @@ registerAttachmentTools(server);
 
 // Start the server
 const main = async (): Promise<void> => {
+  try {
+    await initializeConfig();
+    validateConfig();
+  } catch (err) {
+    logError('Configuration error', { error: err instanceof Error ? err.message : String(err) });
+    process.exit(1);
+  }
+
   const config = getConfig();
   
   info('Jira MCP Server starting...', {

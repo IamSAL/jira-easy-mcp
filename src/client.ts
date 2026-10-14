@@ -181,7 +181,7 @@ export const jiraFetch = async <T = unknown>(
         
         if (response.status === 401) {
           throw new JiraApiException(
-            'Authentication failed. Check your JIRA_USERNAME and JIRA_PASSWORD.',
+            'Authentication failed. Check JIRA_USERNAME and JIRA_PASSWORD (or the "JiraMCP" OS credential).',
             response.status
           );
         }

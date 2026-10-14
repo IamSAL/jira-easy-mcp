@@ -58,6 +58,15 @@ Add to your VS Code settings for accessing in all workspaces.
 
 All use the same `command`, `args`, and `env` configuration as VS Code above.
 
+### Credentials from the OS keychain (optional)
+
+To keep your password out of config files, omit `JIRA_USERNAME`/`JIRA_PASSWORD` and store a credential under the service name `JiraMCP`:
+
+- **macOS:** `security add-generic-password -s JiraMCP -a your-username -w` (prompts for the password; on first start macOS asks to allow `node` to read it)
+- **Windows:** `cmdkey /generic:JiraMCP /user:your-username /pass` (use `/generic`, not `/add`)
+
+If several accounts are stored, set `JIRA_USERNAME` to choose one. When both `JIRA_USERNAME` and `JIRA_PASSWORD` are set, they are used and the keychain is not read. Keychain support uses the optional `keytar` package; if it can't be installed on your machine, use the environment variables.
+
 
 ---
 
