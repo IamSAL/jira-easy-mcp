@@ -52,6 +52,13 @@ export class JiraApiException extends Error {
   }
 }
 
+export interface JiraBinaryResponse {
+  data: string;
+  mimeType: string;
+  size: number;
+  url: string;
+}
+
 /**
  * Parse error response from Jira API.
  */
@@ -120,11 +127,15 @@ export const jiraFetch = async <T = unknown>(
   const method = options.method || 'GET';
 
   const headers: Record<string, string> = {
-    'Content-Type': 'application/json',
     'Accept': 'application/json',
     'Authorization': getAuthHeader(),
     ...(options.headers as Record<string, string> || {}),
   };
+
+  // Let fetch set the multipart boundary for FormData bodies
+  if (!(options.body instanceof FormData)) {
+    headers['Content-Type'] ??= 'application/json';
+  }
 
   // Build fetch options with SSL agent for Node.js
   const fetchOptions: RequestInit & { dispatcher?: unknown } = {
@@ -234,6 +245,111 @@ export const jiraFetch = async <T = unknown>(
   }
 
   throw lastError || new Error('Request failed after retries');
+};
+
+/**
+ * Download a Jira attachment through the same authenticated session used for
+ * REST API calls. Attachment URLs come from Jira's attachment metadata, but are
+ * still restricted to the configured Jira origin and attachment path so this
+ * helper cannot become an arbitrary authenticated URL fetcher.
+ */
+export const jiraDownloadAttachment = async (
+  contentUrl: string,
+  maxBytes: number
+): Promise<JiraBinaryResponse> => {
+  const { baseUrl, timeout, sslVerify } = getConfig();
+  const base = new URL(baseUrl);
+  const url = new URL(contentUrl, `${baseUrl}/`);
+  const contextPath = base.pathname === '/' ? '' : base.pathname.replace(/\/$/, '');
+  const allowedPathPrefix = `${contextPath}/secure/attachment/`;
+
+  if (url.origin !== base.origin || !url.pathname.startsWith(allowedPathPrefix)) {
+    throw new JiraApiException(
+      'Jira returned an attachment URL outside the configured attachment path.',
+      0
+    );
+  }
+
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeout);
+  const fetchOptions: RequestInit & { dispatcher?: unknown } = {
+    method: 'GET',
+    redirect: 'manual',
+    headers: {
+      'Accept': 'image/*',
+      'Authorization': getAuthHeader(),
+    },
+    signal: controller.signal,
+  };
+
+  if (!sslVerify && url.protocol === 'https:') {
+    // @ts-expect-error - Node.js fetch supports agent option
+    fetchOptions.agent = getHttpsAgent();
+  }
+
+  try {
+    logApiRequest('GET', url.toString());
+    const startTime = Date.now();
+    const response = await fetch(url, fetchOptions);
+    logApiResponse('GET', url.toString(), response.status, Date.now() - startTime);
+
+    if (!response.ok) {
+      const errorText = await parseErrorResponse(response);
+      throw new JiraApiException(
+        `Could not download Jira attachment (${response.status}): ${errorText}`,
+        response.status
+      );
+    }
+
+    const declaredSize = Number(response.headers.get('content-length') || 0);
+    if (declaredSize > maxBytes) {
+      throw new JiraApiException(
+        `Jira attachment is ${declaredSize} bytes; the limit is ${maxBytes} bytes.`,
+        0
+      );
+    }
+    if (!response.body) {
+      throw new JiraApiException('Jira attachment response had no body.', 0);
+    }
+
+    const reader = response.body.getReader();
+    const chunks: Uint8Array[] = [];
+    let size = 0;
+    let readResult = await reader.read();
+
+    while (!readResult.done) {
+      const { value } = readResult;
+      size += value.byteLength;
+      if (size > maxBytes) {
+        await reader.cancel();
+        throw new JiraApiException(
+          `Jira attachment exceeded the ${maxBytes}-byte limit while downloading.`,
+          0
+        );
+      }
+      chunks.push(value);
+      readResult = await reader.read();
+    }
+
+    const buffer = Buffer.concat(chunks, size);
+    const mimeType = (response.headers.get('content-type') || 'application/octet-stream')
+      .split(';')[0]
+      .trim();
+
+    return {
+      data: buffer.toString('base64'),
+      mimeType,
+      size,
+      url: url.toString(),
+    };
+  } catch (err) {
+    if (err instanceof Error && err.name === 'AbortError') {
+      throw new JiraApiException(`Attachment download timed out after ${timeout}ms`, 0);
+    }
+    throw err;
+  } finally {
+    clearTimeout(timeoutId);
+  }
 };
 
 /**
@@ -369,6 +485,17 @@ export const jiraPost = async <T = unknown>(endpoint: string, body: unknown): Pr
   return jiraFetch<T>(endpoint, {
     method: 'POST',
     body: JSON.stringify(body),
+  });
+};
+
+/**
+ * POST multipart form data to Jira REST API v2 (e.g., attachment uploads).
+ */
+export const jiraPostForm = async <T = unknown>(endpoint: string, body: FormData): Promise<T> => {
+  return jiraFetch<T>(endpoint, {
+    method: 'POST',
+    headers: { 'X-Atlassian-Token': 'no-check' },
+    body,
   });
 };
 

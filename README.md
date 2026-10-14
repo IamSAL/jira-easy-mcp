@@ -67,6 +67,8 @@ All use the same `command`, `args`, and `env` configuration as VS Code above.
 | --- | --- | --- |
 | **Search issues** | `jira_search` | "Search for all open bugs assigned to me in project ABC" |
 | **Get issue details** | `jira_get_issue` | "Show me the details of issue ABC-123" |
+| **View issue images** | `jira_get_issue_images` | "Show me the screenshots attached to ABC-123" |
+| **Upload attachment** | `jira_upload_attachment` | "Attach /Users/me/Desktop/error.png to ABC-123" |
 | **Create issue** | `jira_create_issue` | "Create a new bug in project ABC with title 'Login button not working'" |
 | **Update issue** | `jira_update_issue` | "Change the priority of ABC-123 to High and assign it to john.doe" |
 | **Add comment** | `jira_add_comment` | "Add a comment to ABC-123 saying 'Fix deployed to staging'" |
@@ -109,6 +111,11 @@ This opens a browser at `http://localhost:6274` where you can:
 | `JIRA_RETRY_DELAY` | `1000` | Base delay between retries (ms) |
 | `JIRA_SSL_VERIFY` | `true` | Set to `false` to skip SSL verification |
 | `JIRA_CACHE_TTL` | `300` | Cache TTL in seconds for static data |
+
+`jira_get_issue_images` downloads images through Jira's authenticated attachment URLs
+(`/secure/attachment/...`, Jira Server/Data Center). It returns up to five images by
+default (maximum ten), with a 10 MiB limit per image and 20 MiB per response.
+`jira_upload_attachment` reads a local file by absolute path on the machine running the server.
 
 ---
 

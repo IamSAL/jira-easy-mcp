@@ -33,6 +33,7 @@ import {
   registerLinkTools,
   registerUserTools,
   registerFieldTools,
+  registerAttachmentTools,
 } from './tools/index.js';
 
 // Validate configuration early
@@ -60,6 +61,7 @@ registerWorklogTools(server);
 registerLinkTools(server);
 registerUserTools(server);
 registerFieldTools(server);
+registerAttachmentTools(server);
 
 // Start the server
 const main = async (): Promise<void> => {

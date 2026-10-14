@@ -87,6 +87,7 @@ export const toSimplifiedIssue = (issue: JiraIssue): SimplifiedIssue => {
   const attachments = fields.attachment?.map(att => ({
     id: att.id,
     filename: att.filename,
+    contentUrl: att.content,
     author: att.author.displayName,
     size: att.size,
     mimeType: att.mimeType,
