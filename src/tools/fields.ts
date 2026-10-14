@@ -69,9 +69,12 @@ const getAllPages = async <T>(endpoint: string): Promise<T[]> => {
 
 /**
  * Jira 9+ removed GET /issue/createmeta?projectKeys=...; the per-project
- * endpoints exist since Jira 8.4. Try them first and fall back on 404 (Jira 7.x - 8.3).
+ * endpoints exist since Jira 8.4. Try them first and fall back to the old one (Jira 7.x - 8.3).
  */
 const isNotFound = (err: unknown): boolean => err instanceof JiraApiException && err.status === 404;
+// Jira 8.x answers the per-project endpoint with 400 for an unknown project
+const shouldUseLegacy = (err: unknown): boolean =>
+  err instanceof JiraApiException && (err.status === 404 || err.status === 400);
 
 const simplifyField = (id: string, field: CreateMetaField): SimplifiedCreateMeta['fields'][number] => ({
   id,
@@ -86,6 +89,22 @@ const simplifyField = (id: string, field: CreateMetaField): SimplifiedCreateMeta
 });
 
 /**
+ * Legacy GET /issue/createmeta (Jira < 8.4). On Jira 9+ it no longer exists,
+ * so reaching it there means the per-project endpoint 404'd: unknown project.
+ */
+const getLegacyCreateMeta = async (projectKey: string, params: URLSearchParams): Promise<LegacyCreateMeta['projects'][number]> => {
+  const notFound = () => new Error(`Project ${projectKey} not found or you cannot create issues in it.`);
+  let meta: LegacyCreateMeta;
+  try {
+    meta = await jiraGet<LegacyCreateMeta>(`/issue/createmeta?${params}`);
+  } catch (err) {
+    throw isNotFound(err) ? notFound() : err;
+  }
+  if (meta.projects.length === 0) throw notFound();
+  return meta.projects[0];
+};
+
+/**
  * Get issue types for a project.
  */
 export const getProjectIssueTypes = async (projectKey: string): Promise<JiraIssueType[]> => {
@@ -93,13 +112,10 @@ export const getProjectIssueTypes = async (projectKey: string): Promise<JiraIssu
   try {
     return await getAllPages<JiraIssueType>(`/issue/createmeta/${project}/issuetypes`);
   } catch (err) {
-    if (!isNotFound(err)) throw err;
+    if (!shouldUseLegacy(err)) throw err;
   }
-  const meta = await jiraGet<LegacyCreateMeta>(`/issue/createmeta?projectKeys=${project}`);
-  if (meta.projects.length === 0) {
-    throw new Error(`Project ${projectKey} not found or you cannot create issues in it.`);
-  }
-  return meta.projects[0].issuetypes;
+  const legacy = await getLegacyCreateMeta(projectKey, new URLSearchParams({ projectKeys: projectKey.trim() }));
+  return legacy.issuetypes;
 };
 
 /**
@@ -116,7 +132,7 @@ export const getCreateMeta = async (
   try {
     const issueTypes = await getAllPages<JiraIssueType>(`/issue/createmeta/${project}/issuetypes`);
     const selected = issueTypes.filter(issueType => matches(issueType.name));
-    return Promise.all(selected.map(async issueType => {
+    return await Promise.all(selected.map(async issueType => {
       const fields = await getAllPages<CreateMetaField>(
         `/issue/createmeta/${project}/issuetypes/${issueType.id}`
       );
@@ -128,15 +144,12 @@ export const getCreateMeta = async (
       };
     }));
   } catch (err) {
-    if (!isNotFound(err)) throw err;
+    if (!shouldUseLegacy(err)) throw err;
   }
 
   const params = new URLSearchParams({ projectKeys: projectKey.trim(), expand: 'projects.issuetypes.fields' });
-  const meta = await jiraGet<LegacyCreateMeta>(`/issue/createmeta?${params}`);
-  if (meta.projects.length === 0) {
-    throw new Error(`Project ${projectKey} not found or you cannot create issues in it.`);
-  }
-  return meta.projects[0].issuetypes
+  const legacy = await getLegacyCreateMeta(projectKey, params);
+  return legacy.issuetypes
     .filter(issueType => matches(issueType.name))
     .map(issueType => ({
       issueType: issueType.name,

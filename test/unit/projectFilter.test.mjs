@@ -30,3 +30,27 @@ test('project keys are checked and JQL tools are scoped', () => {
   assert.equal(applyProjectFilter('jira_search', { jql: 'text ~ x' }).jql, 'project in ("AB", "CD") AND (text ~ x)');
   assert.equal(applyProjectFilter('jira_get_board_issues', { boardId: 1 }).jql, 'project in ("AB", "CD")');
 });
+
+test('JQL that closes the scope parenthesis is rejected', () => {
+  assert.throws(() => scopeJql('a = 1) OR (project = SECRET', allowed), /unbalanced|parenthes/i);
+  assert.throws(() => scopeJql('summary ~ "unterminated', allowed), /quote/i);
+  assert.throws(() => scopeJql('(status = Open', allowed), /unbalanced|parenthes/i);
+});
+
+test('ORDER BY inside quotes is not treated as a clause', () => {
+  assert.equal(scopeJql('summary ~ "sort order by date"', allowed),
+    'project in ("AB", "CD") AND (summary ~ "sort order by date")');
+  assert.equal(scopeJql("summary ~ 'a ) b' ORDER BY key", allowed),
+    'project in ("AB", "CD") AND (summary ~ \'a ) b\') ORDER BY key');
+  assert.equal(scopeJql('summary ~ "say \\"hi\\" (x"', allowed),
+    'project in ("AB", "CD") AND (summary ~ "say \\"hi\\" (x")');
+});
+
+test('customFields cannot move an issue to another project', () => {
+  assert.throws(() => applyProjectFilter('jira_create_issue', {
+    projectKey: 'AB', customFields: { project: { key: 'ZZ' } },
+  }), /customFields/);
+  assert.throws(() => applyProjectFilter('jira_create_issue', {
+    projectKey: 'AB', customFields: { parent: { key: 'ZZ-1' } },
+  }), /customFields/);
+});

@@ -135,6 +135,10 @@ test('uploadAttachment sends the file with its MIME type', async () => {
   await uploadAttachment('KP-1', file);
   assert.match(lastRequest.body, /filename="shot.png"\r\nContent-Type: image\/png/);
   await assert.rejects(uploadAttachment('KP-1', 'relative.png'), /absolute path/);
+  await assert.rejects(uploadAttachment('KP-1', '//attacker/share/x.png'), /UNC/);
+  if (process.platform === 'win32') {
+    await assert.rejects(uploadAttachment('KP-1', '\\\\attacker\\share\\x.png'), /UNC/);
+  }
 });
 
 test('GET is retried on 504, POST is not (avoids duplicate writes)', async () => {

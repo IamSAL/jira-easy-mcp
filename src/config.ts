@@ -66,6 +66,12 @@ export const initializeConfig = async (): Promise<void> => {
   storedCredential = matching[0];
 };
 
+/** Read a non-negative integer env var, falling back when unset or invalid (e.g. "3s"). */
+const readInt = (name: string, fallback: number): number => {
+  const value = Number.parseInt(process.env[name] ?? '', 10);
+  return Number.isNaN(value) || value < 0 ? fallback : value;
+};
+
 /**
  * Get Jira configuration from environment variables.
  * Caches the configuration for subsequent calls.
@@ -101,13 +107,13 @@ export const getConfig = (): JiraConfig => {
   const responseFormat: ResponseFormat = responseFormatStr === 'TOON' ? 'TOON' : 'JSON';
 
   // Optional: Request timeout in milliseconds (default: 30000)
-  const timeout = parseInt(process.env.JIRA_TIMEOUT || '30000', 10);
+  const timeout = readInt('JIRA_TIMEOUT', 30000);
 
   // Optional: Number of retries for failed requests (default: 3)
-  const retryCount = parseInt(process.env.JIRA_RETRY_COUNT || '3', 10);
+  const retryCount = readInt('JIRA_RETRY_COUNT', 3);
 
   // Optional: Base delay between retries in ms (default: 1000)
-  const retryDelay = parseInt(process.env.JIRA_RETRY_DELAY || '1000', 10);
+  const retryDelay = readInt('JIRA_RETRY_DELAY', 1000);
 
   // Optional: SSL verification (default: true)
   const sslVerifyStr = process.env.JIRA_SSL_VERIFY?.toLowerCase();
@@ -123,7 +129,7 @@ export const getConfig = (): JiraConfig => {
   const logLevel: LogLevel = validLogLevels.includes(logLevelStr as LogLevel) ? logLevelStr as LogLevel : 'INFO';
 
   // Optional: Cache TTL in seconds (default: 300 = 5 minutes)
-  const cacheTtl = parseInt(process.env.JIRA_CACHE_TTL || '300', 10);
+  const cacheTtl = readInt('JIRA_CACHE_TTL', 300);
 
   // Set log level in logger
   setLogLevel(logLevel);

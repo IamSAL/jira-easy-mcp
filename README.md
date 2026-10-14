@@ -138,7 +138,7 @@ This opens a browser at `http://localhost:6274` where you can:
 
 | Variable | Default | Description |
 | --- | --- | --- |
-| `JIRA_PROJECTS_FILTER` | *(none)* | Comma-separated project keys. Tools reject issue/project keys outside the list (issue IDs must be given as keys) and JQL is scoped to these projects |
+| `JIRA_PROJECTS_FILTER` | *(none)* | Comma-separated project keys. Tools reject issue/project keys outside the list (issue IDs must be given as keys) and JQL is scoped to these projects. Board, sprint and link IDs are not checked |
 | `JIRA_RESPONSE_FORMAT` | `JSON` | Response format: `JSON` or `TOON` |
 | `JIRA_LOG_LEVEL` | `INFO` | Log verbosity: `DEBUG`, `INFO`, `WARN`, `ERROR` |
 | `JIRA_TIMEOUT` | `30000` | Request timeout in milliseconds |

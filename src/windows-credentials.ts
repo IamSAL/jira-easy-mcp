@@ -12,6 +12,8 @@ const execFileAsync = promisify(execFile);
 
 const readCredentialScript = String.raw`
 $ErrorActionPreference = 'Stop'
+# Windows PowerShell writes redirected stdout in the OEM code page; Node reads UTF-8
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 Add-Type -TypeDefinition @'
 using System;
 using System.Runtime.InteropServices;

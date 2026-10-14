@@ -202,9 +202,9 @@ export const jiraFetch = async <T = unknown>(
         if (response.status === 404) {
           // Jira answers unknown issues/projects with JSON; an HTML 404 means
           // this URL is not Jira's REST API at all
-          const isJson = response.headers.get('content-type')?.includes('application/json');
+          const isHtml = response.headers.get('content-type')?.includes('text/html');
           throw new JiraApiException(
-            isJson || !/<html|<!doctype|HTTP Status/i.test(errorText)
+            !isHtml
               ? `Resource not found: ${errorText}`
               : `No Jira REST API at ${baseUrl}. Check JIRA_BASE_URL, including any context path (e.g. https://host/jira).`,
             response.status

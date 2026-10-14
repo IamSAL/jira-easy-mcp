@@ -70,6 +70,14 @@ describe('MCP tools against live Jira', { skip: !env && 'JIRA_IT_BASE_URL not se
       assert.ok(state.subtaskType, 'project has a sub-task type');
     });
 
+    it('unknown project gives a clear error', async () => {
+      for (const tool of ['jira_get_issue_types', 'jira_get_create_meta']) {
+        const result = await server.call(tool, { projectKey: 'NOSUCH' });
+        assert.equal(result.isError, true);
+        assert.match(result.text, /Project NOSUCH not found/, `${tool}: ${result.text}`);
+      }
+    });
+
     it('jira_get_create_meta', async () => {
       const { json, text } = await server.ok('jira_get_create_meta', { projectKey: PROJECT, issueTypes: ['Bug'] });
       assert.ok(json, `create meta is JSON: ${text.slice(0, 200)}`);
@@ -418,6 +426,12 @@ describe('MCP tools against live Jira', { skip: !env && 'JIRA_IT_BASE_URL not se
         assert.deepEqual(projects.json.map(p => p.key), ['OT']);
         const create = await filtered.call('jira_create_issue', { projectKey: PROJECT, issueType: 'Task', summary: 'blocked' });
         assert.equal(create.isError, true);
+        const escape = await filtered.call('jira_search', { jql: `status != Nope) OR (project = ${PROJECT}` });
+        assert.equal(escape.isError, true, 'JQL cannot break out of the project scope');
+        const moved = await filtered.call('jira_create_issue', {
+          projectKey: 'OT', issueType: 'Task', summary: 'blocked', customFields: { project: { key: PROJECT } },
+        });
+        assert.equal(moved.isError, true, 'customFields cannot switch the project');
       } finally {
         await filtered.close();
       }
