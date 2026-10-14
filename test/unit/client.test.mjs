@@ -24,6 +24,9 @@ before(async () => {
         hits[req.method] = (hits[req.method] || 0) + 1;
         res.writeHead(504);
         res.end();
+      } else if (req.url.startsWith('/rest/api/2/moved')) {
+        res.writeHead(301, { Location: 'https://jira.example.com/rest/api/2/moved' });
+        res.end();
       } else if (req.url === '/rest/api/2/myself') {
         res.writeHead(200, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ name: 'tester' }));
@@ -137,4 +140,9 @@ test('GET is retried on 504, POST is not (avoids duplicate writes)', async () =>
   await assert.rejects(jiraPost('/flaky', {}), /504/);
   assert.equal(hits.GET, 3, 'GET: 1 attempt + 2 retries');
   assert.equal(hits.POST, 1, 'POST must not be retried');
+});
+
+test('a redirecting base URL fails with the target, not a confusing 401', async () => {
+  const { jiraPost } = await client();
+  await assert.rejects(jiraPost('/moved', {}), /redirected to https:\/\/jira\.example\.com.*JIRA_BASE_URL/);
 });

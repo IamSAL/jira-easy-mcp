@@ -79,6 +79,18 @@ const parseSuccessResponse = async <T>(response: Response): Promise<T> => {
 };
 
 /**
+ * Jira's REST API does not redirect; a 3xx means JIRA_BASE_URL is off
+ * (http vs https, missing context path) or an SSO proxy wants a browser login.
+ */
+const redirectError = (response: Response): JiraApiException => {
+  const location = response.headers.get('location') || '(no location)';
+  return new JiraApiException(
+    `Jira redirected to ${location}. Set JIRA_BASE_URL to the address Jira redirects to (check http vs https and the context path, e.g. /jira); a redirect to a login page means an SSO proxy is in front of Jira.`,
+    response.status
+  );
+};
+
+/**
  * Check if an error is retryable.
  */
 const isRetryableError = (status: number): boolean => {
@@ -146,12 +158,19 @@ export const jiraFetch = async <T = unknown>(
 
       const response = await fetch(url, {
         ...fetchOptions,
+        // Following a redirect would turn POST into GET and drop the
+        // Authorization header on an origin change; report it instead
+        redirect: 'manual',
         signal: controller.signal,
       });
 
       clearTimeout(timeoutId);
       const duration = Date.now() - startTime;
       logApiResponse(method, url, response.status, duration);
+
+      if (response.status >= 300 && response.status < 400) {
+        throw redirectError(response);
+      }
 
       if (!response.ok) {
         const errorText = await parseErrorResponse(response);
@@ -377,12 +396,19 @@ export const jiraAgileFetch = async <T = unknown>(
 
       const response = await fetch(url, {
         ...fetchOptions,
+        // Following a redirect would turn POST into GET and drop the
+        // Authorization header on an origin change; report it instead
+        redirect: 'manual',
         signal: controller.signal,
       });
 
       clearTimeout(timeoutId);
       const duration = Date.now() - startTime;
       logApiResponse(method, url, response.status, duration);
+
+      if (response.status >= 300 && response.status < 400) {
+        throw redirectError(response);
+      }
 
       if (!response.ok) {
         const errorText = await parseErrorResponse(response);
