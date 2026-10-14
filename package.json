@@ -21,6 +21,7 @@
     "lint": "eslint src --ext .ts",
     "lint:fix": "eslint src --ext .ts --fix",
     "typecheck": "tsc --noEmit",
+    "test": "tsc && node --test 'test/*.test.mjs'",
     "reload-mcp": "pnpm run prepublishOnly && node dist/index.js"
   },
   "keywords": [

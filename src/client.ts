@@ -73,6 +73,18 @@ const parseErrorResponse = async (response: Response): Promise<string> => {
 };
 
 /**
+ * Parse a successful response. Jira returns empty bodies for some writes
+ * (e.g., 201 from POST /issueLink) without a Content-Length header.
+ */
+const parseSuccessResponse = async <T>(response: Response): Promise<T> => {
+  const text = await response.text();
+  if (text.trim() === '') {
+    return undefined as T;
+  }
+  return JSON.parse(text) as T;
+};
+
+/**
  * Check if an error is retryable.
  */
 const isRetryableError = (status: number): boolean => {
@@ -187,12 +199,7 @@ export const jiraFetch = async <T = unknown>(
         );
       }
 
-      // Handle empty responses (e.g., 204 No Content)
-      if (response.status === 204 || response.headers.get('content-length') === '0') {
-        return undefined as T;
-      }
-
-      return response.json() as Promise<T>;
+      return parseSuccessResponse<T>(response);
       
     } catch (err) {
       clearTimeout(timeoutId);
@@ -295,11 +302,7 @@ export const jiraAgileFetch = async <T = unknown>(
         );
       }
 
-      if (response.status === 204 || response.headers.get('content-length') === '0') {
-        return undefined as T;
-      }
-
-      return response.json() as Promise<T>;
+      return parseSuccessResponse<T>(response);
       
     } catch (err) {
       clearTimeout(timeoutId);
