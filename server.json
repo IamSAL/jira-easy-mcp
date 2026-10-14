@@ -1,0 +1,53 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.IamSAL/jira-easy-mcp",
+  "description": "Self-hosted Jira Server/Data Center 7-10 for AI agents with username + password. 42 tools.",
+  "repository": {
+    "url": "https://github.com/IamSAL/jira-easy-mcp",
+    "source": "github"
+  },
+  "version": "2.0.1",
+  "packages": [
+    {
+      "registryType": "npm",
+      "identifier": "jira-easy-mcp",
+      "version": "2.0.1",
+      "transport": {
+        "type": "stdio"
+      },
+      "environmentVariables": [
+        {
+          "name": "JIRA_BASE_URL",
+          "description": "Jira Server/Data Center URL, including any context path (e.g. https://jira.example.com/jira)",
+          "isRequired": true,
+          "format": "string"
+        },
+        {
+          "name": "JIRA_USERNAME",
+          "description": "Jira username (optional if stored in the OS keychain under JiraMCP)",
+          "isRequired": false,
+          "format": "string"
+        },
+        {
+          "name": "JIRA_PASSWORD",
+          "description": "Jira password (optional if stored in the OS keychain under JiraMCP)",
+          "isRequired": false,
+          "isSecret": true,
+          "format": "string"
+        },
+        {
+          "name": "JIRA_PROJECTS_FILTER",
+          "description": "Comma-separated project keys the agent may access",
+          "isRequired": false,
+          "format": "string"
+        },
+        {
+          "name": "JIRA_SSL_VERIFY",
+          "description": "Set to false to skip TLS verification (prefer NODE_EXTRA_CA_CERTS)",
+          "isRequired": false,
+          "format": "string"
+        }
+      ]
+    }
+  ]
+}
