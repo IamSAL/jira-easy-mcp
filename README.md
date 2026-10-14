@@ -154,6 +154,19 @@ default (maximum ten), with a 10 MiB limit per image and 20 MiB per response.
 
 ---
 
+## Troubleshooting
+
+| Error | Fix |
+| --- | --- |
+| `Authentication failed ... restart the MCP server` | Wrong credentials. After the first failure the server stops logging in, so repeated agent retries cannot trigger Jira's CAPTCHA lockout. Fix the credentials and restart the server (or reload MCP servers in your client). |
+| `Login blocked by CAPTCHA` | Too many failed logins. Log in to Jira once in a browser, then retry. |
+| `Jira redirected to ...` | `JIRA_BASE_URL` is off: use `https://` if Jira redirects there, or add the context path. A redirect to a login page means an SSO proxy sits in front of Jira. |
+| `No Jira REST API at ...` | Usually a missing context path, e.g. `https://host/jira` instead of `https://host`. |
+| `fetch failed` / certificate errors | Company CA: start the server with `NODE_EXTRA_CA_CERTS=/path/to/ca.pem`. Last resort: `JIRA_SSL_VERIFY=false`. |
+| `... outside the allowed projects` | The key is not in `JIRA_PROJECTS_FILTER`. |
+
+---
+
 ## Development & Testing
 
 ```bash

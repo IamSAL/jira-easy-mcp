@@ -19,6 +19,7 @@
  *   JIRA_CACHE_TTL         - Optional: Cache TTL in seconds (default: 300)
  */
 
+import { createRequire } from 'node:module';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { initializeConfig, validateConfig, getConfig } from './config.js';
@@ -38,10 +39,11 @@ import {
   registerAttachmentTools,
 } from './tools/index.js';
 
-// Create MCP server
+// Create MCP server (version from package.json so it cannot drift)
+const { version } = createRequire(import.meta.url)('../package.json') as { version: string };
 const server = new McpServer({
   name: 'jira-easy-mcp',
-  version: '1.1.0',
+  version,
 });
 
 // Register all tools (JIRA_PROJECTS_FILTER is applied to every tool's arguments)
