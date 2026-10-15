@@ -2,7 +2,7 @@
   "name": "jira-easy-mcp",
   "mcpName": "io.github.IamSAL/jira-easy-mcp",
   "version": "2.0.1",
-  "description": "MCP server for Jira with Basic Auth - works with username/password, no API tokens required",
+  "description": "MCP server for self-hosted Jira Server / Data Center 7-10 with Basic Auth - works with username/password, no API tokens required",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -38,7 +38,11 @@
     "rest-api",
     "model-context-protocol",
     "claude",
-    "ai"
+    "ai",
+    "jira-server",
+    "jira-data-center",
+    "self-hosted",
+    "basic-auth"
   ],
   "author": "IamSAL",
   "license": "ISC",
