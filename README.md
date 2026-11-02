@@ -3,7 +3,7 @@
 [![npm version](https://img.shields.io/npm/v/jira-easy-mcp.svg)](https://www.npmjs.com/package/jira-easy-mcp)
 [![GitHub](https://img.shields.io/github/license/IamSAL/jira-easy-mcp)](https://github.com/IamSAL/jira-easy-mcp)
 
-Another Model Context Protocol (MCP) server for Jira, without Auth token. Provides tools for complete Jira automation including issues, projects, boards, sprints, comments, worklogs, and more.
+An open-source Model Context Protocol (MCP) server that lets AI agents (Claude Code, Codex, Cursor, Gemini CLI, VS Code) work with self-hosted Jira Server and Data Center 7–10 using a plain username and password, no API token needed. Its tools cover issues, JQL search, transitions, comments, worklogs, links, attachments, boards, sprints, and more.
 
 > **Tested on:** Jira Server / Data Center 7.13, 8.20, 9.12 and 10.3 (every tool, automated, see [Development & Testing](#development--testing))
 
@@ -82,7 +82,7 @@ All use the same `command`, `args`, and `env` configuration as VS Code above.
 
 > **Windows:** if the client cannot start `npx`, use `"command": "cmd"` with `"args": ["/c", "npx", "-y", "jira-easy-mcp"]`.
 >
-> **Tool limits:** some clients (notably Cursor) cap how many tools they send to the model, historically around 40 across all servers. This server has 41; turn off the ones you don't need in the client's MCP settings.
+> **Tool limits:** some clients (notably Cursor) cap how many tools they send to the model, historically around 40 across all servers. This server has 42; turn off the ones you don't need in the client's MCP settings.
 
 ### Credentials from the OS keychain (optional)
 
