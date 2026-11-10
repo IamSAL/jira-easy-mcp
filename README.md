@@ -2,6 +2,7 @@
 
 [![npm version](https://img.shields.io/npm/v/jira-easy-mcp.svg)](https://www.npmjs.com/package/jira-easy-mcp)
 [![GitHub](https://img.shields.io/github/license/IamSAL/jira-easy-mcp)](https://github.com/IamSAL/jira-easy-mcp)
+[![IamSAL/jira-easy-mcp MCP server](https://glama.ai/mcp/servers/IamSAL/jira-easy-mcp/badges/score.svg)](https://glama.ai/mcp/servers/IamSAL/jira-easy-mcp)
 
 Another Model Context Protocol (MCP) server for Jira, without Auth token. Provides tools for complete Jira automation including issues, projects, boards, sprints, comments, worklogs, and more.
 
